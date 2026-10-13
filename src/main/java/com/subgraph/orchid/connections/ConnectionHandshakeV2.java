@@ -9,8 +9,8 @@ import javax.net.ssl.HandshakeCompletedListener;
 import javax.net.ssl.SSLPeerUnverifiedException;
 import javax.net.ssl.SSLSession;
 import javax.net.ssl.SSLSocket;
-import javax.security.cert.CertificateException;
-import javax.security.cert.X509Certificate;
+import java.security.cert.CertificateException;
+import java.security.cert.X509Certificate;
 
 import com.subgraph.orchid.ConnectionHandshakeException;
 import com.subgraph.orchid.ConnectionIOException;
@@ -73,18 +73,21 @@ public class ConnectionHandshakeV2 extends ConnectionHandshake {
 
 	private X509Certificate getIdentityCertificateFromSession(SSLSession session) throws ConnectionHandshakeException {
 		try {
-			X509Certificate[] chain = session.getPeerCertificateChain();
+			final java.security.cert.Certificate[] chain = session.getPeerCertificates();
 			if(chain.length != 2) {
 				throw new ConnectionHandshakeException("Expecting 2 certificate chain from router and received chain length "+ chain.length);
 			}
+			if(!(chain[0] instanceof X509Certificate) || !(chain[1] instanceof X509Certificate)) {
+				throw new ConnectionHandshakeException("Router presented non-X.509 certificates");
+			}
 			chain[0].verify(chain[1].getPublicKey());
-			return chain[1];
+			return (X509Certificate) chain[1];
 		} catch (SSLPeerUnverifiedException e) {
 			throw new ConnectionHandshakeException("No certificates received from router");
-		} catch (GeneralSecurityException e) {
-			throw new ConnectionHandshakeException("Incorrect signature on certificate chain");
 		} catch (CertificateException e) {
 			throw new ConnectionHandshakeException("Malformed certificate received");
+		} catch (GeneralSecurityException e) {
+			throw new ConnectionHandshakeException("Incorrect signature on certificate chain");
 		}
 	}
 }
