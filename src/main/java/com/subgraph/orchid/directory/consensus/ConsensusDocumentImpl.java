@@ -370,6 +370,11 @@ public class ConsensusDocumentImpl implements ConsensusDocument {
 	
     @Override
     public boolean getUseNTorHandshake() {
-        return getBooleanParameterValue(USE_NTOR_HANDSHAKE_PARAM, false);
+        /*
+         * The UseNTorHandshake parameter was removed from the consensus years
+         * ago and TAP has since been removed from the network entirely, so the
+         * ntor handshake is used unless the consensus explicitly disables it.
+         */
+        return getBooleanParameterValue(USE_NTOR_HANDSHAKE_PARAM, true);
     }
 }
