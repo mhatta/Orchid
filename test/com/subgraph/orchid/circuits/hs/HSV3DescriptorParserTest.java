@@ -134,6 +134,16 @@ public class HSV3DescriptorParserTest {
 	}
 
 	@Test
+	public void testDescriptorPathEncoding() {
+		final byte[] key = new byte[32];
+		Arrays.fill(key, (byte) 0xFF);
+		final String path = HSV3DescriptorDownloader.descriptorPath(key);
+		assertEquals("/tor/hs/3/", path.substring(0, 10));
+		assertEquals(43, path.length() - 10);
+		assertFalse(path.endsWith("="));
+	}
+
+	@Test
 	public void testTokenizer() {
 		final String text = "hs-descriptor 3\nfoo bar  baz\nobj\n-----BEGIN MESSAGE-----\nAAAA\nBBBB\n-----END MESSAGE-----\nlast 1\n";
 		final java.util.List<HSV3DescriptorParser.Item> items = HSV3DescriptorParser.tokenize(text.getBytes(HSV3TestServiceEncoder.ASCII), 0, text.length());

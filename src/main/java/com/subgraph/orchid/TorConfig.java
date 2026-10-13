@@ -8,7 +8,6 @@ import java.lang.annotation.Target;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-import com.subgraph.orchid.circuits.hs.HSDescriptorCookie;
 import com.subgraph.orchid.config.TorConfigBridgeLine;
 import com.subgraph.orchid.data.HexDigest;
 import com.subgraph.orchid.data.IPv4Address;
@@ -92,9 +91,6 @@ public interface TorConfig {
 	boolean getHandshakeV2Enabled();
 	void setHandshakeV2Enabled(boolean value);
 	
-	HSDescriptorCookie getHidServAuth(String key);
-	void addHidServAuth(String key, String value);
-
 	/**
 	 * Return the x25519 private key configured for client authorization
 	 * (restricted discovery) with the given v3 onion service, or null.
