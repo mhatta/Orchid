@@ -84,6 +84,14 @@ public class PreambleSectionParser extends ConsensusDocumentSectionParser {
 		case PARAMS:
 			parseParams();
 			break;
+
+		case SHARED_RAND_PREVIOUS_VALUE:
+			document.setSharedRandomPreviousValue(parseSharedRandomValue());
+			break;
+
+		case SHARED_RAND_CURRENT_VALUE:
+			document.setSharedRandomCurrentValue(parseSharedRandomValue());
+			break;
 			
 		default:
 			break;
@@ -121,6 +129,21 @@ public class PreambleSectionParser extends ConsensusDocumentSectionParser {
 		return Arrays.asList(versions.split(","));
 	}
 	
+	/*
+	 * "shared-rand-previous-value" SP NumReveals SP Value NL
+	 * "shared-rand-current-value" SP NumReveals SP Value NL
+	 * where Value is the base64 encoded 32 byte shared random value (srv-spec).
+	 */
+	private byte[] parseSharedRandomValue() {
+		fieldParser.parseInteger(); // NumReveals, unused
+		final byte[] value = fieldParser.parseBase64Data();
+		if(value.length != 32) {
+			fieldParser.logWarn("Ignoring shared random value with unexpected length "+ value.length);
+			return null;
+		}
+		return value;
+	}
+
 	private void parseParams() {
 		final int remaining = fieldParser.argumentsRemaining();
 		for(int i = 0; i < remaining; i++) {

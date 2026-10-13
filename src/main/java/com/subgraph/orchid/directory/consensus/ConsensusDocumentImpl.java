@@ -40,6 +40,16 @@ public class ConsensusDocumentImpl implements ConsensusDocument {
 
     private final static String USE_NTOR_HANDSHAKE_PARAM = "UseNTorHandshake";
 
+    /* v3 onion service directory parameters (rend-spec-v3 [WHERE-HSDESC] and param-spec) */
+    private final static String HSDIR_INTERVAL_PARAM = "hsdir_interval";
+    private final static int HSDIR_INTERVAL_DEFAULT = 1440;
+    private final static int HSDIR_INTERVAL_MIN = 30;
+    private final static int HSDIR_INTERVAL_MAX = 14400;
+    private final static String HSDIR_N_REPLICAS_PARAM = "hsdir_n_replicas";
+    private final static int HSDIR_N_REPLICAS_DEFAULT = 2;
+    private final static String HSDIR_SPREAD_FETCH_PARAM = "hsdir_spread_fetch";
+    private final static int HSDIR_SPREAD_FETCH_DEFAULT = 3;
+
     private Set<RequiredCertificate> requiredCertificates = new HashSet<RequiredCertificate>();
 
 
@@ -59,6 +69,8 @@ public class ConsensusDocumentImpl implements ConsensusDocument {
     private List<RouterStatus> routerStatusEntries;
     private Map<String, Integer> bandwidthWeights;
     private Map<String, Integer> parameters;
+    private byte[] sharedRandomPreviousValue;
+    private byte[] sharedRandomCurrentValue;
     private int signatureCount;
     private boolean isFirstCallToVerifySignatures = true;
     private String rawDocumentData;
@@ -73,6 +85,8 @@ public class ConsensusDocumentImpl implements ConsensusDocument {
     void addClientVersion(String version) { clientVersions.add(version); }
     void addServerVersion(String version) { serverVersions.add(version); }
     void addParameter(String name, int value) { parameters.put(name, value); }
+    void setSharedRandomPreviousValue(byte[] value) { sharedRandomPreviousValue = value; }
+    void setSharedRandomCurrentValue(byte[] value) { sharedRandomCurrentValue = value; }
     void addBandwidthWeight(String name, int value) { bandwidthWeights.put(name, value); }
 
     void addSignature(DirectorySignature signature) {
@@ -376,5 +390,35 @@ public class ConsensusDocumentImpl implements ConsensusDocument {
          * ntor handshake is used unless the consensus explicitly disables it.
          */
         return getBooleanParameterValue(USE_NTOR_HANDSHAKE_PARAM, true);
+    }
+
+    @Override
+    public int getIntegerParameter(String name, int defaultValue, int minValue, int maxValue) {
+        return getParameterValue(name, defaultValue, minValue, maxValue);
+    }
+
+    @Override
+    public int getHSDirIntervalParameter() {
+        return getParameterValue(HSDIR_INTERVAL_PARAM, HSDIR_INTERVAL_DEFAULT, HSDIR_INTERVAL_MIN, HSDIR_INTERVAL_MAX);
+    }
+
+    @Override
+    public int getHSDirNReplicasParameter() {
+        return getParameterValue(HSDIR_N_REPLICAS_PARAM, HSDIR_N_REPLICAS_DEFAULT, 1, 16);
+    }
+
+    @Override
+    public int getHSDirSpreadFetchParameter() {
+        return getParameterValue(HSDIR_SPREAD_FETCH_PARAM, HSDIR_SPREAD_FETCH_DEFAULT, 1, 128);
+    }
+
+    @Override
+    public byte[] getSharedRandomPreviousValue() {
+        return sharedRandomPreviousValue;
+    }
+
+    @Override
+    public byte[] getSharedRandomCurrentValue() {
+        return sharedRandomCurrentValue;
     }
 }
