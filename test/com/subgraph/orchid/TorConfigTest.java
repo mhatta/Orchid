@@ -86,6 +86,25 @@ public class TorConfigTest {
 	}
 	
 	@Test
+	public void testOnionClientAuth() {
+		/* Valid v3 address from the tor test suite */
+		final String address = "25njqamcweflpvkl73j4szahhihoc4xt3ktcgjnpaingr5yhkenl5sid";
+		final String onion = address + ".onion";
+		/* 32 zero bytes, base32 encoded */
+		final String key = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+		assertNull(config.getOnionClientAuthKey(onion));
+
+		config.addOnionClientAuth(onion, key);
+
+		final byte[] decoded = config.getOnionClientAuthKey(onion);
+		assertNotNull(decoded);
+		assertEquals(32, decoded.length);
+		assertEquals("0000000000000000000000000000000000000000000000000000000000000000", new String(Hex.encode(decoded)));
+		assertNotNull(config.getOnionClientAuthKey(address));
+	}
+
+	@Test
 	public void testAutoBool() {
 		assertEquals(TorConfig.AutoBoolValue.AUTO, config.getUseNTorHandshake());
 		config.setUseNTorHandshake(TorConfig.AutoBoolValue.TRUE);
