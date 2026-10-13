@@ -70,7 +70,12 @@ public class RouterMicrodescriptorImpl implements RouterMicrodescriptor {
 	}
 
 	public boolean isValidDocument() {
-		return (descriptorDigest != null) && (onionKey != null);
+		/*
+		 * Since consensus method 37 the "onion-key" line carries no RSA key
+		 * (TAP has been removed from the network), so only the ntor key is
+		 * required for a usable microdescriptor.
+		 */
+		return (descriptorDigest != null) && (ntorOnionKey != null);
 	}
 	
 	public String getRawDocumentData() {

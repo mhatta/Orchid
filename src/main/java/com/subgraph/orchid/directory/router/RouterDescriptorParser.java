@@ -97,7 +97,10 @@ public class RouterDescriptorParser implements DocumentParser<RouterDescriptor> 
 			currentDescriptor.setUptime(fieldParser.parseInteger());
 			break;
 		case ONION_KEY:
-			currentDescriptor.setOnionKey(fieldParser.parsePublicKey());
+			// The TAP onion key object is optional in current descriptors (proposal 350).
+			if(fieldParser.nextLineIsObject()) {
+				currentDescriptor.setOnionKey(fieldParser.parsePublicKey());
+			}
 			break;
 		case NTOR_ONION_KEY:
 			currentDescriptor.setNtorOnionKey(fieldParser.parseNtorPublicKey());

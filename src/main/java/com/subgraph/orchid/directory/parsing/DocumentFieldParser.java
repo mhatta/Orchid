@@ -283,6 +283,12 @@ public interface DocumentFieldParser {
 	 *         calculated document hash.
 	 */
 	boolean verifySignedEntity(TorPublicKey publicKey, TorSignature signature);
+
+	/**
+	 * Return true if the next unread line of the document begins a
+	 * "-----BEGIN ...-----" object.  Used for keywords whose object is optional.
+	 */
+	boolean nextLineIsObject();
 	
 	/**
 	 * Test that the current keyword line has the correct number of arguments.

@@ -397,6 +397,20 @@ public class DocumentFieldParserImpl implements DocumentFieldParser {
         return publicKey.verifySignature(signature, signatureDigest);
     }
 
+    @Override
+    public boolean nextLineIsObject() {
+        final int pos = inputBuffer.position();
+        if(inputBuffer.remaining() < BEGIN_TAG.length()) {
+            return false;
+        }
+        for(int i = 0; i < BEGIN_TAG.length(); i++) {
+            if((inputBuffer.get(pos + i) & 0xFF) != BEGIN_TAG.charAt(i)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private String readLine() {
         final String line = nextLineFromInputBuffer();
         if(line != null) {

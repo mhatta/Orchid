@@ -87,7 +87,7 @@ public class RouterMicrodescriptorParser implements DocumentParser<RouterMicrode
 		case P:
 			processP();
 			break;
-	
+
 		case A:
 		default:
 			break;
@@ -100,7 +100,14 @@ public class RouterMicrodescriptorParser implements DocumentParser<RouterMicrode
 		}
 		currentDescriptor = new RouterMicrodescriptorImpl();
 		fieldParser.resetRawDocument(RouterMicrodescriptorKeyword.ONION_KEY.getKeyword() + "\n");
-		currentDescriptor.setOnionKey(fieldParser.parsePublicKey());
+		/*
+		 * dir-spec: "onion-key" starts every microdescriptor, but since consensus
+		 * method 37 the (obsolete, TAP) RSA key object is omitted.  Only parse the
+		 * object if one actually follows.
+		 */
+		if(fieldParser.nextLineIsObject()) {
+			currentDescriptor.setOnionKey(fieldParser.parsePublicKey());
+		}
 	}
 
 	private void finalizeDescriptor(RouterMicrodescriptorImpl descriptor) {
