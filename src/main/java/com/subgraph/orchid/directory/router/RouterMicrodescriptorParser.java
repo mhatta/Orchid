@@ -88,6 +88,10 @@ public class RouterMicrodescriptorParser implements DocumentParser<RouterMicrode
 			processP();
 			break;
 
+		case ID:
+			processId();
+			break;
+	
 		case A:
 		default:
 			break;
@@ -107,6 +111,25 @@ public class RouterMicrodescriptorParser implements DocumentParser<RouterMicrode
 		 */
 		if(fieldParser.nextLineIsObject()) {
 			currentDescriptor.setOnionKey(fieldParser.parsePublicKey());
+		}
+	}
+
+	/*
+	 * "id" SP "ed25519" SP ed25519-identity NL
+	 * "id" SP "rsa1024" SP rsa-identity-digest NL   (ignored)
+	 */
+	private void processId() {
+		if(currentDescriptor == null) {
+			return;
+		}
+		final String keyType = fieldParser.parseString();
+		if("ed25519".equals(keyType)) {
+			final byte[] key = fieldParser.parseBase64Data();
+			if(key.length == 32) {
+				currentDescriptor.setEd25519Identity(key);
+			} else {
+				fieldParser.logWarn("Ignoring 'id ed25519' line with unexpected key length "+ key.length);
+			}
 		}
 	}
 

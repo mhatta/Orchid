@@ -140,6 +140,14 @@ public class BridgeRouterImpl implements BridgeRouter {
 		}
 	}
 
+	public byte[] getEd25519Identity() {
+		if(descriptor != null) {
+			return descriptor.getEd25519Identity();
+		} else {
+			return null;
+		}
+	}
+
 	public boolean hasBandwidth() {
 		return false;
 	}

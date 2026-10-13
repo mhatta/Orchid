@@ -173,6 +173,15 @@ public class RouterImpl implements Router {
 		}
 	}
 
+	public byte[] getEd25519Identity() {
+		refreshDescriptor();
+		if(descriptor != null) {
+			return descriptor.getEd25519Identity();
+		} else {
+			return null;
+		}
+	}
+
 	public boolean hasBandwidth() {
 		return status.hasBandwidth();
 	}

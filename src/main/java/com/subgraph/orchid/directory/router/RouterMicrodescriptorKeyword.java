@@ -6,6 +6,7 @@ public enum RouterMicrodescriptorKeyword {
 	A("a", 1),
 	FAMILY("family"),
 	P("p", 2),
+	ID("id", 2),
 	UNKNOWN_KEYWORD("KEYWORD NOT FOUNE");
 	
 	public final static int VARIABLE_ARGUMENT_COUNT = -1;

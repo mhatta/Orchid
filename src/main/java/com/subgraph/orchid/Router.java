@@ -24,6 +24,10 @@ public interface Router {
 
 	TorPublicKey getOnionKey();
 	byte[] getNTorOnionKey();
+	/**
+	 * Return the Ed25519 master identity key of this router, or null if it is not known.
+	 */
+	byte[] getEd25519Identity();
 	
 	boolean hasBandwidth();
 	int getEstimatedBandwidth();

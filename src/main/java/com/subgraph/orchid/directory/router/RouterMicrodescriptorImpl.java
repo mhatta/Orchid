@@ -18,6 +18,7 @@ public class RouterMicrodescriptorImpl implements RouterMicrodescriptor {
 	private int routerPort;
 	private TorPublicKey onionKey;
 	private byte[] ntorOnionKey;
+	private byte[] ed25519Identity;
 	private Set<String> familyMembers = Collections.emptySet();
 	private ExitPorts acceptPorts;
 	private ExitPorts rejectPorts;
@@ -40,6 +41,10 @@ public class RouterMicrodescriptorImpl implements RouterMicrodescriptor {
 
 	public void setNtorOnionKey(byte[] ntorOnionKey) {
 		this.ntorOnionKey = ntorOnionKey;
+	}
+
+	public void setEd25519Identity(byte[] ed25519Identity) {
+		this.ed25519Identity = ed25519Identity;
 	}
 
 	public void addFamilyMember(String familyMember) {
@@ -88,6 +93,10 @@ public class RouterMicrodescriptorImpl implements RouterMicrodescriptor {
 
 	public byte[] getNTorOnionKey() {
 		return ntorOnionKey;
+	}
+
+	public byte[] getEd25519Identity() {
+		return ed25519Identity;
 	}
 
 	public IPv4Address getAddress() {
