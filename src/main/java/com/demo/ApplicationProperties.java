@@ -6,7 +6,9 @@ import com.subgraph.orchid.logging.SysLog;
 public class ApplicationProperties {
     private static final String NAME = "Orchid";
     private static final String VERSION = "1.0.6";
-    private static SysLog LOGGING_THRESHOLD = SysLog.INFORMATIONAL;
+    /** System property selecting the log level, e.g. -Dcom.subgraph.orchid.logLevel=DEBUG */
+    public static final String LOG_LEVEL_PROPERTY = "com.subgraph.orchid.logLevel";
+    private static SysLog LOGGING_THRESHOLD = initialLoggingThreshold();
     private static boolean USE_COMPRESSION = false;
     private static boolean ENFORCE_SSL_CERTIFICATES = true;
     private static String[] TRUSTED_DIRECTORY_AUTHORITIES = {
@@ -42,6 +44,11 @@ public class ApplicationProperties {
         return VERSION;
     }
     
+    private static SysLog initialLoggingThreshold(){
+        final SysLog fromProperty = SysLog.forName(System.getProperty(LOG_LEVEL_PROPERTY));
+        return (fromProperty != null) ? fromProperty : SysLog.INFORMATIONAL;
+    }
+
     public static SysLog getLoggingThreshold(){
         return LOGGING_THRESHOLD;
     }
