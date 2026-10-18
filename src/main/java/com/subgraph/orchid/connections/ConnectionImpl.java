@@ -9,7 +9,9 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.net.SocketTimeoutException;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -251,8 +253,26 @@ public class ConnectionImpl implements Connection, DashboardRenderable {
         }
     }
 
+    /*
+     * Every circuit on a closed connection is gone.  Destroy them so that
+     * threads waiting on them (a circuit build, a stream read) notice now
+     * instead of when their timeout expires.
+     */
     private void notifyCircuitsLinkClosed() {
-
+        final List<Circuit> circuits;
+        circuitsLock.lock();
+        try {
+            circuits = new ArrayList<Circuit>(circuitMap.values());
+        } finally {
+            circuitsLock.unlock();
+        }
+        for(Circuit c: circuits) {
+            try {
+                c.destroyCircuit();
+            } catch(RuntimeException e) {
+                logger.debug("Exception destroying circuit after connection to "+ router + " closed: "+ e);
+            }
+        }
     }
 
     Cell readConnectionControlCell() throws ConnectionIOException {

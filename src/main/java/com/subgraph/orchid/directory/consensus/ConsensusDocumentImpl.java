@@ -14,6 +14,7 @@ import com.subgraph.orchid.DirectoryServer;
 import com.subgraph.orchid.KeyCertificate;
 import com.subgraph.orchid.RouterStatus;
 import com.subgraph.orchid.Tor;
+import com.subgraph.orchid.TorException;
 import com.subgraph.orchid.VoteAuthorityEntry;
 import com.subgraph.orchid.crypto.TorPublicKey;
 import com.subgraph.orchid.crypto.TorSignature.DigestAlgorithm;
@@ -40,6 +41,16 @@ public class ConsensusDocumentImpl implements ConsensusDocument {
 
     private final static String USE_NTOR_HANDSHAKE_PARAM = "UseNTorHandshake";
 
+    /* v3 onion service directory parameters (rend-spec-v3 [WHERE-HSDESC] and param-spec) */
+    private final static String HSDIR_INTERVAL_PARAM = "hsdir_interval";
+    private final static int HSDIR_INTERVAL_DEFAULT = 1440;
+    private final static int HSDIR_INTERVAL_MIN = 30;
+    private final static int HSDIR_INTERVAL_MAX = 14400;
+    private final static String HSDIR_N_REPLICAS_PARAM = "hsdir_n_replicas";
+    private final static int HSDIR_N_REPLICAS_DEFAULT = 2;
+    private final static String HSDIR_SPREAD_FETCH_PARAM = "hsdir_spread_fetch";
+    private final static int HSDIR_SPREAD_FETCH_DEFAULT = 3;
+
     private Set<RequiredCertificate> requiredCertificates = new HashSet<RequiredCertificate>();
 
 
@@ -59,6 +70,8 @@ public class ConsensusDocumentImpl implements ConsensusDocument {
     private List<RouterStatus> routerStatusEntries;
     private Map<String, Integer> bandwidthWeights;
     private Map<String, Integer> parameters;
+    private byte[] sharedRandomPreviousValue;
+    private byte[] sharedRandomCurrentValue;
     private int signatureCount;
     private boolean isFirstCallToVerifySignatures = true;
     private String rawDocumentData;
@@ -73,6 +86,8 @@ public class ConsensusDocumentImpl implements ConsensusDocument {
     void addClientVersion(String version) { clientVersions.add(version); }
     void addServerVersion(String version) { serverVersions.add(version); }
     void addParameter(String name, int value) { parameters.put(name, value); }
+    void setSharedRandomPreviousValue(byte[] value) { sharedRandomPreviousValue = value; }
+    void setSharedRandomCurrentValue(byte[] value) { sharedRandomCurrentValue = value; }
     void addBandwidthWeight(String name, int value) { bandwidthWeights.put(name, value); }
 
     void addSignature(DirectorySignature signature) {
@@ -276,12 +291,16 @@ public class ConsensusDocumentImpl implements ConsensusDocument {
         }
     }
 
+    /*
+     * The signature names the signing key it was made with (the SHA-1 digest
+     * of the key, dir-spec "directory-signature"), so look up the certificate
+     * for that key.  An authority rotates its signing key from time to time
+     * and the client may then hold certificates for both the old and the new
+     * key; picking any certificate of the authority verified the signature
+     * with the wrong key.
+     */
     private SignatureStatus verifySignatureForTrustedAuthority(DirectoryServer trustedAuthority, DirectorySignature signature) {
-        logger.debug("trustedAuthority.toString(): "+trustedAuthority.toString());
-        logger.debug("signature.getSigningKeyDigest(): "+signature.getSigningKeyDigest());
-	// https://github.com/geo-gs/Orchid/commit/22beeae1b881707491addaba6a7654e9de9f9db1
-//        final KeyCertificate certificate = trustedAuthority.getCertificateByFingerprint(signature.getSigningKeyDigest());
-        final KeyCertificate certificate = trustedAuthority.getCertificateByAuthority(trustedAuthority.getV3Identity());
+        final KeyCertificate certificate = trustedAuthority.getCertificateByFingerprint(signature.getSigningKeyDigest());
 
         if(certificate == null) {
             logger.debug("Missing certificate for signing key: "+ signature.getSigningKeyDigest());
@@ -289,19 +308,30 @@ public class ConsensusDocumentImpl implements ConsensusDocument {
             return SignatureStatus.STATUS_NEED_CERTS;
         }
         if(certificate.isExpired()) {
-            logger.debug("certificate.isExpired(): "+true);
+            logger.debug("Certificate for signing key "+ signature.getSigningKeyDigest() + " has expired");
             return SignatureStatus.STATUS_FAILED;
         }
 
         final TorPublicKey signingKey = certificate.getAuthoritySigningKey();
         final HexDigest d = (signature.useSha256()) ? signingHash256 : signingHash;
-        logger.debug("trustedAuthority.toString(): "+trustedAuthority.toString());
-        logger.debug("signature.getSigningKeyDigest(): "+signature.getSigningKeyDigest());
-        if(!signingKey.verifySignature(signature.getSignature(), d)) {
+        if(!verifySignature(signingKey, signature, d)) {
             logger.warn("Signature failed on consensus for signing key: "+ signature.getSigningKeyDigest());
             return SignatureStatus.STATUS_FAILED;
         }
         return SignatureStatus.STATUS_VERIFIED;
+    }
+
+    /*
+     * TorPublicKey#verifySignature() throws when the signature does not
+     * decrypt with the key (bad padding); that is a failed signature, not an
+     * error that should abort processing of the whole consensus.
+     */
+    private static boolean verifySignature(TorPublicKey signingKey, DirectorySignature signature, HexDigest digest) {
+        try {
+            return signingKey.verifySignature(signature.getSignature(), digest);
+        } catch(TorException e) {
+            return false;
+        }
     }
 
     @Override
@@ -370,6 +400,41 @@ public class ConsensusDocumentImpl implements ConsensusDocument {
 	
     @Override
     public boolean getUseNTorHandshake() {
-        return getBooleanParameterValue(USE_NTOR_HANDSHAKE_PARAM, false);
+        /*
+         * The UseNTorHandshake parameter was removed from the consensus years
+         * ago and TAP has since been removed from the network entirely, so the
+         * ntor handshake is used unless the consensus explicitly disables it.
+         */
+        return getBooleanParameterValue(USE_NTOR_HANDSHAKE_PARAM, true);
+    }
+
+    @Override
+    public int getIntegerParameter(String name, int defaultValue, int minValue, int maxValue) {
+        return getParameterValue(name, defaultValue, minValue, maxValue);
+    }
+
+    @Override
+    public int getHSDirIntervalParameter() {
+        return getParameterValue(HSDIR_INTERVAL_PARAM, HSDIR_INTERVAL_DEFAULT, HSDIR_INTERVAL_MIN, HSDIR_INTERVAL_MAX);
+    }
+
+    @Override
+    public int getHSDirNReplicasParameter() {
+        return getParameterValue(HSDIR_N_REPLICAS_PARAM, HSDIR_N_REPLICAS_DEFAULT, 1, 16);
+    }
+
+    @Override
+    public int getHSDirSpreadFetchParameter() {
+        return getParameterValue(HSDIR_SPREAD_FETCH_PARAM, HSDIR_SPREAD_FETCH_DEFAULT, 1, 128);
+    }
+
+    @Override
+    public byte[] getSharedRandomPreviousValue() {
+        return sharedRandomPreviousValue;
+    }
+
+    @Override
+    public byte[] getSharedRandomCurrentValue() {
+        return sharedRandomCurrentValue;
     }
 }

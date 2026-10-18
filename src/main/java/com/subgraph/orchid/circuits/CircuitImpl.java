@@ -199,6 +199,13 @@ public abstract class CircuitImpl implements Circuit, DashboardRenderable {
         return io.receiveControlCellResponse();
     }
 
+    /**
+     * Why the circuit was destroyed, or null if it has not been.
+     */
+    String getDestroyReason() {
+        return (io == null) ? null : io.getDestroyReason();
+    }
+
     /*
      * This is called by the cell reading thread in ConnectionImpl to deliver control cells 
      * associated with this circuit (CREATED or CREATED_FAST).

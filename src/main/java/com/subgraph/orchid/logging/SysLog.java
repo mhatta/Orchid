@@ -26,6 +26,32 @@ public class SysLog {
         return severity;
     }
     
+    /**
+     * Look up a level by name, case insensitively.  Accepts the severity names
+     * ("DEBUG", "INFORMATIONAL", "NOTICE", "WARNING", "ERROR", ...) and the
+     * common short forms "INFO" and "WARN".
+     *
+     * @return The level, or null if the name is not recognized.
+     */
+    public static SysLog forName(String name){
+        if(name == null){
+            return null;
+        }
+        final String n = name.trim().toUpperCase(java.util.Locale.ROOT);
+        if(n.equals("INFO")){
+            return INFORMATIONAL;
+        }
+        if(n.equals("WARN")){
+            return WARNING;
+        }
+        for(SysLog level: new SysLog[] { EMERGENCY, ALERT, CRITICAL, ERROR, WARNING, NOTICE, INFORMATIONAL, DEBUG }){
+            if(level.getSeverity().equals(n)){
+                return level;
+            }
+        }
+        return null;
+    }
+
     public Boolean isGreaterOrEqual(SysLog other){
         if(this.value!=null && other!=null && other.getValue()!=null){
             return this.value<=other.value;

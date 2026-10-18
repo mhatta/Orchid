@@ -24,6 +24,16 @@ public interface Descriptor extends Document {
 	 */
 	TorPublicKey getOnionKey();
 	byte[] getNTorOnionKey();
+
+	/**
+	 * Return the Ed25519 master identity key of this router (the "id ed25519"
+	 * line of a microdescriptor or the "master-key-ed25519" line of a server
+	 * descriptor), or null if the descriptor does not carry one.  This key is
+	 * needed to compute v3 onion service directory indices.
+	 *
+	 * @return The 32 byte Ed25519 identity key, or null.
+	 */
+	byte[] getEd25519Identity();
 	
 	/**
 	 * Return the IPv4 address of this router.

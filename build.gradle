@@ -1,81 +1,109 @@
-apply plugin: 'java'
+plugins {
+    id 'java'
+}
 
-sourceCompatibility = 1.8
-targetCompatibility = 1.8
-//sourceCompatibility = 10
-//targetCompatibility = 10
+// Orchid targets Java 8 bytecode so that it keeps working as a library on
+// older JVMs and on Android; it builds and runs on current JDKs (tested with
+// JDK 21).  The v3 onion service crypto (SHA3/SHAKE, Ed25519) is implemented
+// in pure Java and needs no provider beyond the JDK's AES and SHA-512.
+java {
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+}
 
 repositories {
-      mavenCentral()
-//    jcenter()
-//if https doesn't work    
-//    jcenter {url "http://jcenter.bintray.com" }
+    // Jars dropped into lib/ take precedence so that the project can be built
+    // offline (see lib/README).
+    flatDir { dirs 'lib' }
+    mavenCentral()
 }
 
 dependencies {
-//sync with versions included in Debian sid, if possible 
-    compile group: 'commons-io', name: 'commons-io', version: '2.6'
-    compile group: 'org.jsoup', name: 'jsoup', version: '1.10.2'
-    compile group: 'com.google.guava', name: 'guava', version: '19.0'
-//    compile group: 'net.sf.proguard', name: 'proguard-base', version: '6.0.1'
-//    compile group: 'net.sf.proguard', name: 'proguard-gradle', version: '6.0.1'
-    compile group: 'org.apache.xmlrpc', name: 'xmlrpc-common', version: '3.1.3'
-    compile group: 'org.apache.xmlrpc', name: 'xmlrpc-client', version: '3.1.3'
-//  compile fileTree(dir: 'lib', include: '*.jar')
-    }
+    implementation 'commons-io:commons-io:2.18.0'
+    implementation 'org.jsoup:jsoup:1.18.3'
+    implementation 'com.google.guava:guava:33.4.0-jre'
+    implementation 'org.apache.xmlrpc:xmlrpc-common:3.1.3'
+    implementation 'org.apache.xmlrpc:xmlrpc-client:3.1.3'
+
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.easymock:easymock:5.4.0'
+}
 
 sourceSets {
     main {
-    	 java {
-	      srcDirs = ['src/main','opt']
-	 }
+        java {
+            srcDirs = ['src/main/java', 'opt']
+        }
+        resources {
+            srcDirs = ['src/main/resources']
+        }
+    }
+    test {
+        java {
+            srcDirs = ['test']
+        }
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.compilerArgs << '-Xlint:-options'
+}
+
+test {
+    useJUnit()
+    testLogging {
+        events 'failed'
+        exceptionFormat 'full'
     }
 }
 
 jar {
     manifest {
-    	     attributes 'Main-Class': 'com.subgraph.orchid.TorClient'
-    }		
+        attributes 'Main-Class': 'com.subgraph.orchid.TorClient'
+    }
 }
 
-//gradle clean fatJar
-task fatJar(type: Jar) {
-    baseName = rootProject.name
+// gradle clean fatJar
+tasks.register('fatJar', Jar) {
+    group = 'build'
+    description = 'Assembles a jar containing Orchid and all of its runtime dependencies.'
+    archiveBaseName = rootProject.name
+    archiveClassifier = 'all'
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     manifest {
-    	     attributes 'Main-Class': 'com.subgraph.orchid.TorClient'
-    }		
-    from { configurations.compile.collect { it.isDirectory() ? it : zipTree(it) } }
-    with jar
+        attributes 'Main-Class': 'com.subgraph.orchid.TorClient'
+    }
+    from sourceSets.main.output
+    dependsOn configurations.runtimeClasspath
+    from {
+        configurations.runtimeClasspath.findAll { it.name.endsWith('jar') }.collect { zipTree(it) }
+    }
+    exclude 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA'
 }
 
 //https://gist.github.com/JonasGroeger/7620911
 def getGitSha() {
     def gitFolder = "$projectDir/.git/"
     def takeFromHash = 12
-    /*
-     * '.git/HEAD' contains either
-     *      in case of detached head: the currently checked out commit hash
-     *      otherwise: a reference to a file containing the current commit hash
-     */
-    def head = new File(gitFolder + "HEAD").text.split(":") // .git/HEAD
-    def isCommit = head.length == 1 // e5a7c79edabbf7dd39888442df081b1c9d8e88fd
-    // def isRef = head.length > 1     // ref: refs/heads/master
-
-    if(isCommit) return head[0].trim().take(takeFromHash) // e5a7c79edabb
-
-    def refHead = new File(gitFolder + head[1].trim()) // .git/refs/heads/master
-    refHead.text.trim().take takeFromHash
+    try {
+        def head = new File(gitFolder + "HEAD").text.split(":") // .git/HEAD
+        def isCommit = head.length == 1 // e5a7c79edabbf7dd39888442df081b1c9d8e88fd
+        if(isCommit) return head[0].trim().take(takeFromHash) // e5a7c79edabb
+        def refHead = new File(gitFolder + head[1].trim()) // .git/refs/heads/master
+        return refHead.text.trim().take(takeFromHash)
+    } catch(all) {
+        return 'unknown'
+    }
 }
 
 def getReleaseTag() {
-    def gitTagStdOut = new ByteArrayOutputStream()
-    try{
-        exec {
-            commandLine "git", "describe", "--abbrev=0", "--tags"
-            standardOutput = gitTagStdOut
-        }
-        return gitTagStdOut.toString().trim()
-    } catch(all){
+    try {
+        def proc = ["git", "describe", "--abbrev=0", "--tags"].execute(null, projectDir)
+        proc.waitFor()
+        def out = proc.in.text.trim()
+        return out.isEmpty() ? '0.0.0' : out
+    } catch(all) {
         return '0.0.0'
     }
 }
@@ -83,33 +111,16 @@ def getReleaseTag() {
 version = getReleaseTag()
 
 processResources {
-  def replacer = { replaceMap ->
-    return { line ->
-      def newLine = line
-      replaceMap.each { regex, replaceStr ->
-        if (line =~ regex) {
-          println "Replacing $line with $replaceStr"
-          newLine = replaceStr
+    def fileName = rootProject.name + "-" + version + ".jar"
+    def gitSha = getGitSha()
+    def releaseDate = new Date().toString()
+
+    filesMatching('application.properties') {
+        filter { String line ->
+            if(line =~ /^file\.name=/) return "file.name=$fileName"
+            if(line =~ /^git\.sha=/) return "git.sha=$gitSha"
+            if(line =~ /^release\.date=/) return "release.date=$releaseDate"
+            return line
         }
-      }
-      return newLine
     }
-  }
-
-  def fileName = rootProject.name+"-"+version+".jar"
-  def gitSha = getGitSha()
-  def releaseDate = new Date()
-
-  filesMatching('*.properties', { file ->
-    switch(file.name) {
-      case 'application.properties':
-        //Modify app.version and revision
-          file.filter(replacer([
-            /file\.name=.*/ : "file.name=$fileName",
-            /git\.sha=.*/ : "git.sha=$gitSha",
-            /release\.date=.*/ : "release.date=$releaseDate"
-          ]))
-        break
-    }
-  })
 }

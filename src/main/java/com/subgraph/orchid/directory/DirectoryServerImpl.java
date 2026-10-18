@@ -18,7 +18,6 @@ public class DirectoryServerImpl extends RouterImpl implements DirectoryServer {
     private boolean isHiddenServiceAuthority = false;
     private boolean isBridgeAuthority = false;
     private boolean isExtraInfoCache = false;
-    private int port;
     private HexDigest v3Ident;
 
     DirectoryServerImpl(RouterStatus status) {
@@ -29,7 +28,6 @@ public class DirectoryServerImpl extends RouterImpl implements DirectoryServer {
     void unsetHiddenServiceAuthority() { isHiddenServiceAuthority = false; }
     void setBridgeAuthority() { isBridgeAuthority = true; }
     void setExtraInfoCache() { isExtraInfoCache = true; }
-    void setPort(int port) { this.port = port; }
     void setV3Ident(HexDigest fingerprint) { this.v3Ident = fingerprint; }
 
     public boolean isTrustedAuthority() {
@@ -136,7 +134,7 @@ public class DirectoryServerImpl extends RouterImpl implements DirectoryServer {
     private KeyCertificate getNewestCertificate() {
         KeyCertificate newest = null;
         for(KeyCertificate kc : certificates) {
-            if(newest == null || getPublishedMilliseconds(newest) > getPublishedMilliseconds(kc)) {
+            if(newest == null || getPublishedMilliseconds(kc) > getPublishedMilliseconds(newest)) {
                 newest = kc;
             }
         }
@@ -154,23 +152,32 @@ public class DirectoryServerImpl extends RouterImpl implements DirectoryServer {
 
     @Override
     public void addCertificate(KeyCertificate certificate) {
-        logger.debug(certificate.getAuthorityFingerprint().toString()+"-"+certificate.getAuthoritySigningKey().toString());
-        logger.debug("addCertificate");
         if(!certificate.getAuthorityFingerprint().equals(v3Ident)) {
                 throw new IllegalArgumentException("This certificate does not appear to belong to this directory authority");
         }
+        final HexDigest signingKey = certificate.getAuthoritySigningKey().getFingerprint();
         synchronized(certificates) {
+                // The same certificate is downloaded again after a restart
+                // or when another consensus asks for it; keep one copy.
+                final Iterator<KeyCertificate> it = certificates.iterator();
+                while(it.hasNext()) {
+                    if(it.next().getAuthoritySigningKey().getFingerprint().equals(signingKey)) {
+                        it.remove();
+                    }
+                }
+                logger.debug("Adding certificate for "+ getNickname() + " with signing key "+ signingKey);
                 certificates.add(certificate);
         }
     }
 
     @Override
     public String toString() {
+        // The ORPort is what Orchid connects to (BEGIN_DIR); the DirPort is unused.
         if(v3Ident != null) {
-            return "(Directory: "+ getNickname() +" "+ getAddress() +":"+ port +" fingerprint="+ getIdentityHash() +" v3ident="+ 
+            return "(Directory: "+ getNickname() +" "+ getAddress() +":"+ getOnionPort() +" fingerprint="+ getIdentityHash() +" v3ident="+
                     v3Ident +")";
         } else{
-            return "(Directory: "+ getNickname() +" "+ getAddress() +":"+ port +" fingerprint="+ getIdentityHash() +")";
+            return "(Directory: "+ getNickname() +" "+ getAddress() +":"+ getOnionPort() +" fingerprint="+ getIdentityHash() +")";
         }
     }
 }

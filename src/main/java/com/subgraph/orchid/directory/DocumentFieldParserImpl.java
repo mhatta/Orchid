@@ -188,19 +188,15 @@ public class DocumentFieldParserImpl implements DocumentFieldParser {
     }
 
     @Override
+    /*
+     * dir-spec section 1.2: "For forward compatibility, each item MUST allow
+     * extra arguments at the end of the line unless otherwise noted."  Only
+     * the minimum number of arguments is enforced; extra ones are ignored.
+     */
     public void verifyExpectedArgumentCount(String keyword, int argumentCount) {
-        verifyExpectedArgumentCount(keyword, argumentCount, argumentCount);
-    }
-
-    private  void verifyExpectedArgumentCount(String keyword, int expectedMin, int expectedMax) {
-        final int argumentCount = argumentsRemaining();
-        if(expectedMin != -1 && argumentCount < expectedMin) {
-            throw new TorParsingException("Not enough arguments for keyword '"+ keyword +"' expected "+ expectedMin +" and got "+ argumentCount);
-        }
-
-        if(expectedMax != -1 && argumentCount > expectedMax){
-            // Is this the correct thing to do, or should just be a warning?
-            throw new TorParsingException("Too many arguments for keyword '"+ keyword +"' expected "+ expectedMax +" and got "+ argumentCount);
+        final int remaining = argumentsRemaining();
+        if(argumentCount != -1 && remaining < argumentCount) {
+            throw new TorParsingException("Not enough arguments for keyword '"+ keyword +"' expected "+ argumentCount +" and got "+ remaining);
         }
     }
 
@@ -265,13 +261,19 @@ public class DocumentFieldParserImpl implements DocumentFieldParser {
         return new NameIntegerParameter(name, value);
     }
 
+    /*
+     * dir-spec: Parameter ::= Keyword '=' Int32, where a Keyword consists of
+     * ASCII letters, digits and '-'.  Parameter names in use also contain '_'
+     * (e.g. "hsdir_interval") and '-' (e.g. "guard-n-primary-guards-to-use").
+     */
     private void validateParameterName(String name) {
         if(name.isEmpty()) {
             throw new TorParsingException("Parameter name cannot be empty");
         }
         for(char c: name.toCharArray()) {
-            if(!(Character.isLetterOrDigit(c) || c == '_')) {
-                throw new TorParsingException("Parameter name can only contain letters.  Rejecting: "+ name);
+            final boolean asciiAlnum = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
+            if(!(asciiAlnum || c == '_' || c == '-')) {
+                throw new TorParsingException("Parameter name may only contain ASCII letters, digits, '-' and '_'.  Rejecting: "+ name);
             }
         }
     }
@@ -395,6 +397,20 @@ public class DocumentFieldParserImpl implements DocumentFieldParser {
     public boolean verifySignedEntity(TorPublicKey publicKey, TorSignature signature) {
         isProcessingSignedEntity = false;
         return publicKey.verifySignature(signature, signatureDigest);
+    }
+
+    @Override
+    public boolean nextLineIsObject() {
+        final int pos = inputBuffer.position();
+        if(inputBuffer.remaining() < BEGIN_TAG.length()) {
+            return false;
+        }
+        for(int i = 0; i < BEGIN_TAG.length(); i++) {
+            if((inputBuffer.get(pos + i) & 0xFF) != BEGIN_TAG.charAt(i)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private String readLine() {

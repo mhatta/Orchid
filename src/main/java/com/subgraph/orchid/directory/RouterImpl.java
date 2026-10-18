@@ -47,10 +47,27 @@ public class RouterImpl implements Router {
 		if(descriptor != null) {
 			return false;
 		}
-	
+		/*
+		 * Microdescriptors are fetched by the digest in the consensus "m" line
+		 * and the "r" line publication time carries no information: since
+		 * consensus method 33 it is fixed at "2038-01-01 00:00:00" in the
+		 * microdesc flavor (dir-spec, consensus methods).  A missing microdescriptor can
+		 * always be downloaded.
+		 */
+		if(status.getMicrodescriptorDigest() != null) {
+			return true;
+		}
+		/*
+		 * Server descriptors published in the last ten minutes may not have
+		 * reached the directory caches yet.  A publication time in the future
+		 * is not a real time, so do not let it block the download.
+		 */
 		final long now = System.currentTimeMillis();
-		final long diff = now - status.getPublicationTime().getDate().getTime();
-		return diff > (1000 * 60 * 10);	
+		final long published = status.getPublicationTime().getDate().getTime();
+		if(published > now) {
+			return true;
+		}
+		return (now - published) > (1000 * 60 * 10);
 	}
 	
 	public String getVersion() {
@@ -130,6 +147,14 @@ public class RouterImpl implements Router {
 		return hasFlag("HSDir");
 	}
 
+	public boolean isDirectoryCache() {
+		return hasFlag("V2Dir");
+	}
+
+	public boolean isDirectoryAuthority() {
+		return hasFlag("Authority");
+	}
+
 	public int getDirectoryPort() {
 		return status.getDirectoryPort();
 	}
@@ -168,6 +193,15 @@ public class RouterImpl implements Router {
 		refreshDescriptor();
 		if(descriptor != null) {
 			return descriptor.getNTorOnionKey();
+		} else {
+			return null;
+		}
+	}
+
+	public byte[] getEd25519Identity() {
+		refreshDescriptor();
+		if(descriptor != null) {
+			return descriptor.getEd25519Identity();
 		} else {
 			return null;
 		}

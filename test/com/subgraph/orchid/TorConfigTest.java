@@ -13,7 +13,6 @@ import java.util.concurrent.TimeUnit;
 import org.junit.Before;
 import org.junit.Test;
 
-import com.subgraph.orchid.circuits.hs.HSDescriptorCookie;
 import com.subgraph.orchid.config.TorConfigBridgeLine;
 import com.subgraph.orchid.data.HexDigest;
 import com.subgraph.orchid.data.IPv4Address;
@@ -68,21 +67,22 @@ public class TorConfigTest {
 	}
 	
 	@Test
-	public void testHidServAuth() {
-		final String address = "3t43tfluce4qcxbo";
+	public void testOnionClientAuth() {
+		/* Valid v3 address from the tor test suite */
+		final String address = "25njqamcweflpvkl73j4szahhihoc4xt3ktcgjnpaingr5yhkenl5sid";
 		final String onion = address + ".onion";
-		
-		final String hex = "022b99d1d272285c80f7214bd6c07c27";
-		final String descriptor = "AiuZ0dJyKFyA9yFL1sB8Jw";
-		
-		assertNull(config.getHidServAuth(onion));
-		
-		config.addHidServAuth(onion, descriptor);
-		
-		HSDescriptorCookie cookie = config.getHidServAuth(onion);
-		assertNotNull(cookie);
-		assertEquals(hex, new String(Hex.encode(cookie.getValue())));
-		assertSame(cookie, config.getHidServAuth(address));
+		/* 32 zero bytes, base32 encoded */
+		final String key = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+		assertNull(config.getOnionClientAuthKey(onion));
+
+		config.addOnionClientAuth(onion, key);
+
+		final byte[] decoded = config.getOnionClientAuthKey(onion);
+		assertNotNull(decoded);
+		assertEquals(32, decoded.length);
+		assertEquals("0000000000000000000000000000000000000000000000000000000000000000", new String(Hex.encode(decoded)));
+		assertNotNull(config.getOnionClientAuthKey(address));
 	}
 	
 	@Test

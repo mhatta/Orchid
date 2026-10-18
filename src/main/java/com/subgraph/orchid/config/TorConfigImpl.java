@@ -1,7 +1,6 @@
 package com.subgraph.orchid.config;
 
 import com.subgraph.orchid.TorConfig;
-import com.subgraph.orchid.circuits.hs.HSDescriptorCookie;
 import com.subgraph.orchid.data.HexDigest;
 import com.subgraph.orchid.data.IPv4Address;
 
@@ -39,7 +38,7 @@ public class TorConfigImpl implements TorConfig {
         clientRejectInternalAddress = true;
         handshakeV3Enabled = true;
         handshakeV2Enabled = true;
-        hsAuth = new TorConfigHSAuth();
+        onionClientAuth = new TorConfigOnionClientAuth();
         useNtorHandshake = AutoBoolValue.AUTO;
         useMicrodescriptors = AutoBoolValue.AUTO;
         useBridges = false;
@@ -71,7 +70,7 @@ public class TorConfigImpl implements TorConfig {
     private boolean clientRejectInternalAddress;
     private boolean handshakeV3Enabled;
     private boolean handshakeV2Enabled;
-    private TorConfigHSAuth hsAuth;
+    private TorConfigOnionClientAuth onionClientAuth;
     private AutoBoolValue useNtorHandshake;
     private AutoBoolValue useMicrodescriptors;
     private boolean useBridges;
@@ -362,13 +361,13 @@ public class TorConfigImpl implements TorConfig {
     }
 
     @Override
-    public HSDescriptorCookie getHidServAuth(String key) {
-        return hsAuth.get(key);
+    public byte[] getOnionClientAuthKey(String onionAddress) {
+        return onionClientAuth.get(onionAddress);
     }
 
     @Override
-    public void addHidServAuth(String key, String value) {
-        hsAuth.add(key, value);
+    public void addOnionClientAuth(String onionAddress, String base32PrivateKey) {
+        onionClientAuth.add(onionAddress, base32PrivateKey);
     }
 
     @Override

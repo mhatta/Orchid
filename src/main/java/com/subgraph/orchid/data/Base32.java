@@ -27,12 +27,18 @@ public class Base32 {
 		return outbuffer.toString();
 	}
 	
+	/**
+	 * Decode an (unpadded) base32 string.  Inputs whose bit length is not a
+	 * multiple of 8 are accepted as long as the leftover bits are fewer than
+	 * one base32 character (as for the 52 character encoding of 32 byte keys
+	 * used by Tor); the leftover bits are discarded.
+	 */
 	public static byte[] base32Decode(String source) {
 		int[] v = stringToIntVector(source);
 		
 		int nbits = source.length() * 5;
-		if(nbits % 8 != 0) 
-			throw new TorException("Base32 decoded array must be a muliple of 8 bits");
+		if(nbits % 8 >= 5)
+			throw new TorException("Base32 string has an invalid length");
 		
 		int outlen = nbits / 8;
 		byte[] outbytes = new byte[outlen];
@@ -71,7 +77,7 @@ public class Base32 {
 	}
 	
 	private static int[] stringToIntVector(String s) {
-		final int[] ints = new int[s.length() + 1];
+		final int[] ints = new int[s.length() + 2];
 		for(int i = 0; i < s.length(); i++) {
 			int b = s.charAt(i) & 0xFF;
 			if(b > 0x60 && b < 0x7B)

@@ -38,6 +38,7 @@ public class RouterDescriptorImpl implements RouterDescriptor {
 
     private TorPublicKey onionKey;
     private byte[] ntorOnionKey;
+    private byte[] ed25519Identity;
     private TorPublicKey identityKey;
     private ExitPolicy exitPolicy = new ExitPolicy();
 
@@ -73,6 +74,7 @@ public class RouterDescriptorImpl implements RouterDescriptor {
     void setUptime(int uptime) { this.uptime = uptime; }
     public void setOnionKey(TorPublicKey key) { this.onionKey = key; }
     void setNtorOnionKey(byte[] key) { this.ntorOnionKey = key; }
+    void setEd25519Identity(byte[] key) { this.ed25519Identity = key; }
     void setIdentityKey(TorPublicKey key) { this.identityKey = key; }
     void setContact(String contact) { this.contact = contact; }
     void setEventDNS() { eventDNS = true; }
@@ -126,7 +128,7 @@ public class RouterDescriptorImpl implements RouterDescriptor {
         // verify required fields exist, see dirspec.txt section 2.1
         return hasValidSignature && (nickname != null) && (address != null) &&
                 (averageBandwidth != -1) && (routerPort != 0 || directoryPort != 0) &&
-                (published != null) && (onionKey != null) && (identityKey != null) &&
+                (published != null) && (onionKey != null || ntorOnionKey != null) && (identityKey != null) &&
                 (descriptorDigest != null);
     }
 
@@ -188,6 +190,10 @@ public class RouterDescriptorImpl implements RouterDescriptor {
     @Override
     public byte[] getNTorOnionKey() {
         return ntorOnionKey;
+    }
+
+    public byte[] getEd25519Identity() {
+        return ed25519Identity;
     }
 
     @Override

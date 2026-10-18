@@ -140,6 +140,14 @@ public class BridgeRouterImpl implements BridgeRouter {
 		}
 	}
 
+	public byte[] getEd25519Identity() {
+		if(descriptor != null) {
+			return descriptor.getEd25519Identity();
+		} else {
+			return null;
+		}
+	}
+
 	public boolean hasBandwidth() {
 		return false;
 	}
@@ -209,6 +217,15 @@ public class BridgeRouterImpl implements BridgeRouter {
 	}
 
 	public boolean isHSDirectory() {
+		return false;
+	}
+
+	public boolean isDirectoryCache() {
+		// A bridge serves directory documents to the clients that use it.
+		return true;
+	}
+
+	public boolean isDirectoryAuthority() {
 		return false;
 	}
 

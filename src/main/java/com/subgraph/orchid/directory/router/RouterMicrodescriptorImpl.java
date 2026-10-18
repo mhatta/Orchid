@@ -18,6 +18,7 @@ public class RouterMicrodescriptorImpl implements RouterMicrodescriptor {
 	private int routerPort;
 	private TorPublicKey onionKey;
 	private byte[] ntorOnionKey;
+	private byte[] ed25519Identity;
 	private Set<String> familyMembers = Collections.emptySet();
 	private ExitPorts acceptPorts;
 	private ExitPorts rejectPorts;
@@ -40,6 +41,10 @@ public class RouterMicrodescriptorImpl implements RouterMicrodescriptor {
 
 	public void setNtorOnionKey(byte[] ntorOnionKey) {
 		this.ntorOnionKey = ntorOnionKey;
+	}
+
+	public void setEd25519Identity(byte[] ed25519Identity) {
+		this.ed25519Identity = ed25519Identity;
 	}
 
 	public void addFamilyMember(String familyMember) {
@@ -70,7 +75,12 @@ public class RouterMicrodescriptorImpl implements RouterMicrodescriptor {
 	}
 
 	public boolean isValidDocument() {
-		return (descriptorDigest != null) && (onionKey != null);
+		/*
+		 * Since consensus method 37 the "onion-key" line carries no RSA key
+		 * (TAP has been removed from the network), so only the ntor key is
+		 * required for a usable microdescriptor.
+		 */
+		return (descriptorDigest != null) && (ntorOnionKey != null);
 	}
 	
 	public String getRawDocumentData() {
@@ -83,6 +93,10 @@ public class RouterMicrodescriptorImpl implements RouterMicrodescriptor {
 
 	public byte[] getNTorOnionKey() {
 		return ntorOnionKey;
+	}
+
+	public byte[] getEd25519Identity() {
+		return ed25519Identity;
 	}
 
 	public IPv4Address getAddress() {

@@ -69,12 +69,11 @@ public class ConnectionHandshakeV3 extends ConnectionHandshake {
 	}
 	
 	RSAPublicKey getConnectionPublicKey() {
-		try {
-			javax.security.cert.X509Certificate[] chain = socket.getSession().getPeerCertificateChain();
-			return (RSAPublicKey) chain[0].getPublicKey();
-		} catch (SSLPeerUnverifiedException e) {
+		final X509Certificate cert = getConnectionCertificateFromSession(socket.getSession());
+		if(cert == null || !(cert.getPublicKey() instanceof RSAPublicKey)) {
 			return null;
 		}
+		return (RSAPublicKey) cert.getPublicKey();
 	}
 	
 
@@ -135,24 +134,32 @@ public class ConnectionHandshakeV3 extends ConnectionHandshake {
 	}
 	
 	public static boolean sessionSupportsHandshake(SSLSession session) {
-		javax.security.cert.X509Certificate cert = getConnectionCertificateFromSession(session);
+		final X509Certificate cert = getConnectionCertificateFromSession(session);
 		if(cert == null) {
 			return false;
 		}
-		return isSelfSigned(cert) || testDName(cert.getSubjectDN()) ||
-				testDName(cert.getIssuerDN()) || testModulusLength(cert); 
+		return isSelfSigned(cert) || testDName(cert.getSubjectX500Principal()) ||
+				testDName(cert.getIssuerX500Principal()) || testModulusLength(cert); 
 	}
 	
-	static private javax.security.cert.X509Certificate getConnectionCertificateFromSession(SSLSession session) {
+	/*
+	 * SSLSession.getPeerCertificateChain() (javax.security.cert) is deprecated
+	 * and throws UnsupportedOperationException since JDK 15, so the
+	 * java.security.cert API is used instead.
+	 */
+	static private X509Certificate getConnectionCertificateFromSession(SSLSession session) {
 		try {
-			final javax.security.cert.X509Certificate[] chain = session.getPeerCertificateChain();
-			return chain[0];
+			final java.security.cert.Certificate[] chain = session.getPeerCertificates();
+			if(chain == null || chain.length == 0 || !(chain[0] instanceof X509Certificate)) {
+				return null;
+			}
+			return (X509Certificate) chain[0];
 		} catch (SSLPeerUnverifiedException e) {
 			return null;
 		}
 	}
 	
-	static private boolean isSelfSigned(javax.security.cert.X509Certificate certificate) {
+	static private boolean isSelfSigned(X509Certificate certificate) {
 		try {
 			certificate.verify(certificate.getPublicKey());
 			return true;
@@ -179,7 +186,7 @@ public class ConnectionHandshakeV3 extends ConnectionHandshake {
 	/*
 	 * * The certificate's public key modulus is longer than 1024 bits.
 	 */
-	static private boolean testModulusLength(javax.security.cert.X509Certificate cert) {
+	static private boolean testModulusLength(X509Certificate cert) {
 		if(!(cert.getPublicKey() instanceof RSAPublicKey)) {
 			return false;
 		}

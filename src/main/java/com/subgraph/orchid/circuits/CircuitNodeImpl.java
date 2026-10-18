@@ -11,6 +11,16 @@ public class CircuitNodeImpl implements CircuitNode {
 	public static CircuitNode createAnonymous(CircuitNode previous, byte[] keyMaterial, byte[] verifyDigest) {
 		return createNode(null, previous, keyMaterial, verifyDigest);
 	}
+
+	/**
+	 * Create the anonymous (router-less) virtual hop representing a v3 onion
+	 * service at the far end of a rendezvous circuit.  The key material is the
+	 * output of the hs-ntor key expansion (Df | Db | Kf | Kb, SHA3-256/AES-256).
+	 */
+	public static CircuitNode createAnonymousHSV3(CircuitNode previous, byte[] keyMaterial) {
+		final CircuitNodeCryptoState cs = CircuitNodeCryptoState.createFromHSV3KeyMaterial(keyMaterial);
+		return new CircuitNodeImpl(null, previous, cs);
+	}
 	
 	public static CircuitNode createFirstHop(Router r, byte[] keyMaterial, byte[] verifyDigest) {
 		return createNode(r, null, keyMaterial, verifyDigest);

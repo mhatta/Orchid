@@ -19,6 +19,8 @@ enum DocumentKeyword {
 	SERVER_VERSIONS("server-versions",  DocumentSection.PREAMBLE,1),
 	KNOWN_FLAGS("known-flags",  DocumentSection.PREAMBLE),
 	PARAMS("params",  DocumentSection.PREAMBLE),
+	SHARED_RAND_PREVIOUS_VALUE("shared-rand-previous-value", DocumentSection.PREAMBLE, 2),
+	SHARED_RAND_CURRENT_VALUE("shared-rand-current-value", DocumentSection.PREAMBLE, 2),
 	
 	DIR_SOURCE("dir-source", DocumentSection.AUTHORITY, 6),
 	CONTACT("contact", DocumentSection.AUTHORITY),

@@ -8,7 +8,6 @@ import java.lang.annotation.Target;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-import com.subgraph.orchid.circuits.hs.HSDescriptorCookie;
 import com.subgraph.orchid.config.TorConfigBridgeLine;
 import com.subgraph.orchid.data.HexDigest;
 import com.subgraph.orchid.data.IPv4Address;
@@ -92,8 +91,20 @@ public interface TorConfig {
 	boolean getHandshakeV2Enabled();
 	void setHandshakeV2Enabled(boolean value);
 	
-	HSDescriptorCookie getHidServAuth(String key);
-	void addHidServAuth(String key, String value);
+	/**
+	 * Return the x25519 private key configured for client authorization
+	 * (restricted discovery) with the given v3 onion service, or null.
+	 */
+	byte[] getOnionClientAuthKey(String onionAddress);
+
+	/**
+	 * Configure a client authorization key for a v3 onion service.
+	 *
+	 * @param onionAddress The onion address (with or without ".onion").
+	 * @param base32PrivateKey The base32 encoded x25519 private key, as in
+	 *        a ClientOnionAuthDir file ("&lt;onion&gt;:descriptor:x25519:&lt;key&gt;").
+	 */
+	void addOnionClientAuth(String onionAddress, String base32PrivateKey);
 	
 	AutoBoolValue getUseNTorHandshake();
 	void setUseNTorHandshake(AutoBoolValue value);

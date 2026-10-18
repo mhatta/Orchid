@@ -236,7 +236,7 @@ public class CircuitCreationTask implements Runnable {
 
             @Override
             public void circuitBuildFailed(String reason) {
-                logger.debug("Circuit build failed: "+ reason);
+                logger.info("Circuit build failed: "+ reason);
                 buildCircuitIfNeeded();
             }
 
@@ -247,7 +247,7 @@ public class CircuitCreationTask implements Runnable {
 
             @Override
             public void connectionFailed(String reason) {
-                logger.debug("Circuit connection failed: "+ reason);
+                logger.info("Circuit connection failed: "+ reason);
                 buildCircuitIfNeeded();
             }
 
@@ -280,7 +280,7 @@ public class CircuitCreationTask implements Runnable {
 
             @Override
             public void connectionFailed(String reason) {
-                logger.debug("Circuit connection failed: "+ reason);
+                logger.info("Circuit connection failed: "+ reason);
                 circuitManager.decrementPendingInternalCircuitCount();
             }
 
@@ -291,7 +291,7 @@ public class CircuitCreationTask implements Runnable {
 
             @Override
             public void circuitBuildFailed(String reason) {
-                logger.debug("Circuit build failed: "+ reason);
+                logger.info("Circuit build failed: "+ reason);
                 circuitManager.decrementPendingInternalCircuitCount();
             }
 

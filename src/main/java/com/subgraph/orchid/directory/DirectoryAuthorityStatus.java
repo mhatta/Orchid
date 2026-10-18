@@ -31,10 +31,20 @@ public class DirectoryAuthorityStatus implements RouterStatus {
 	void setDirectoryPort(int port) { this.directoryPort = port; }
 	void addFlag(String flag) { this.flags.add(flag); }
 	void setV3Ident(HexDigest v3Ident) { this.v3Ident = v3Ident; }
-	
+
 	DirectoryAuthorityStatus() {
 		addFlag("Authority");
 		addFlag("V2Dir");
+	}
+
+	/**
+	 * Status for a fallback directory: a directory cache known before any
+	 * consensus has been loaded, which is not an authority.
+	 */
+	static DirectoryAuthorityStatus createFallbackStatus() {
+		final DirectoryAuthorityStatus status = new DirectoryAuthorityStatus();
+		status.flags.remove("Authority");
+		return status;
 	}
 	
 	public IPv4Address getAddress() {
