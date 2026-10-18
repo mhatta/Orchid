@@ -47,7 +47,7 @@ public class CircuitExtender {
     private CircuitNode receiveAndProcessCreateFastResponse(Router targetRouter, TorKeyAgreement kex) {
         final Cell cell = circuit.receiveControlCellResponse();
         if(cell == null) {
-            throw new TorException("Timeout building circuit waiting for CREATE_FAST response from "+ targetRouter);
+            throw noResponseException("waiting for CREATE_FAST response from "+ targetRouter);
         }
 
         return processCreatedFastCell(targetRouter, cell, kex);
@@ -85,6 +85,18 @@ public class CircuitExtender {
         return ntorEnabled && targetRouter.getNTorOnionKey() != null;
     }
 
+    /*
+     * No reply arrived: either the circuit was destroyed (a DESTROY cell from
+     * a relay, or the connection closed) or the build timed out.
+     */
+    private TorException noResponseException(String context) {
+        final String reason = circuit.getDestroyReason();
+        if(reason != null) {
+            return new TorException("Circuit "+ reason +" while "+ context);
+        }
+        return new TorException("Timeout building circuit "+ context);
+    }
+
     private void logProtocolViolation(String sourceName, Router targetRouter) {
         final String version = (targetRouter == null) ? "(none)" : targetRouter.getVersion();
         final String targetName = (targetRouter == null) ? "(none)" : targetRouter.getNickname();
@@ -108,7 +120,8 @@ public class CircuitExtender {
     public RelayCell receiveRelayResponse(int expectedCommand, Router extendTarget) {
         final RelayCell cell = circuit.receiveRelayCell();
         if(cell == null) {
-            throw new TorException("Timeout building circuit");
+            final String target = (extendTarget == null) ? "" : (" extending to "+ extendTarget.getNickname());
+            throw noResponseException("waiting for "+ RelayCellImpl.commandToDescription(expectedCommand) + target);
         }
         final int command = cell.getRelayCommand();
         if(command == RelayCell.RELAY_TRUNCATED) {

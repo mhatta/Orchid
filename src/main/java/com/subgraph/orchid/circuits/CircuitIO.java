@@ -30,6 +30,16 @@ public class CircuitIO implements DashboardRenderable {
     final static long CIRCUIT_BUILD_TIMEOUT_MS = 30 * 1000;
     private final static long CIRCUIT_RELAY_RESPONSE_TIMEOUT = 20 * 1000;
 
+    /*
+     * Added to the response queues when the circuit is destroyed, so that a
+     * thread waiting for CREATED_FAST, EXTENDED2 or another reply returns at
+     * once instead of waiting until the build or response timeout expires.
+     */
+    private final static Cell DESTROYED_CONTROL_CELL = CellImpl.createCell(0, 0);
+    private final static RelayCell DESTROYED_RELAY_CELL = new RelayCellImpl(null, 0, 0, 0);
+
+    private volatile String destroyReason;
+
     private final CircuitImpl circuit;
     private final Connection connection;
     private final int circuitId;
@@ -61,14 +71,28 @@ public class CircuitIO implements DashboardRenderable {
         return circuitId;
     }
 
+    // Return null on timeout or when the circuit has been destroyed
     RelayCell dequeueRelayResponseCell() {
         try {
             final long timeout = getReceiveTimeout();
-            return relayCellResponseQueue.poll(timeout, TimeUnit.MILLISECONDS);
+            final RelayCell cell = relayCellResponseQueue.poll(timeout, TimeUnit.MILLISECONDS);
+            if(cell == DESTROYED_RELAY_CELL) {
+                // leave it for any other waiting thread
+                relayCellResponseQueue.add(cell);
+                return null;
+            }
+            return cell;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return null;
         }
+    }
+
+    /**
+     * If the circuit has been destroyed, the reason, otherwise null.
+     */
+    String getDestroyReason() {
+        return destroyReason;
     }
 
     private RelayCell decryptRelayCell(Cell cell) {
@@ -81,11 +105,16 @@ public class CircuitIO implements DashboardRenderable {
         throw new TorException("Could not decrypt relay cell");
     }
 
-    // Return null on timeout
+    // Return null on timeout or when the circuit has been destroyed
     Cell receiveControlCellResponse() {
         try {
             final long timeout = getReceiveTimeout();
-            return controlCellResponseQueue.poll(timeout, TimeUnit.MILLISECONDS);
+            final Cell cell = controlCellResponseQueue.poll(timeout, TimeUnit.MILLISECONDS);
+            if(cell == DESTROYED_CONTROL_CELL) {
+                controlCellResponseQueue.add(cell);
+                return null;
+            }
+            return cell;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return null;
@@ -138,7 +167,7 @@ public class CircuitIO implements DashboardRenderable {
 
     private void processDestroyCell(int reason) {
         logger.debug("DESTROY cell received ("+ CellImpl.errorToDescription(reason) +") on "+ circuit);
-        destroyCircuit();
+        destroyCircuit("destroyed by relay: "+ CellImpl.errorToDescription(reason));
     }
 
     /* This is called by the cell reading thread in ConnectionImpl to deliver RELAY cells. */
@@ -280,6 +309,10 @@ public class CircuitIO implements DashboardRenderable {
     }
 
     void sendDestroyCell(int reason) {
+        if(connection.isClosed()) {
+            // The link is gone, and with it every circuit on it.
+            return;
+        }
         Cell destroy = CellImpl.createCell(circuitId, Cell.DESTROY);
         destroy.putByte(reason);
         try {
@@ -294,11 +327,16 @@ public class CircuitIO implements DashboardRenderable {
     }
 
     void destroyCircuit() {
+        destroyCircuit("closed");
+    }
+
+    void destroyCircuit(String reason) {
         streamLock.lock();
         try {
             if(isClosed) {
                 return;
             }
+            destroyReason = reason;
             circuit.setStateDestroyed();
             connection.removeCircuit(circuit);
             final List<StreamImpl> tmpList = new ArrayList<StreamImpl>(streamMap.values());
@@ -309,6 +347,8 @@ public class CircuitIO implements DashboardRenderable {
         } finally {
             streamLock.unlock();
         }
+        controlCellResponseQueue.add(DESTROYED_CONTROL_CELL);
+        relayCellResponseQueue.add(DESTROYED_RELAY_CELL);
     }
 
     StreamImpl createNewStream(boolean autoclose) {
