@@ -1,9 +1,11 @@
 package com.subgraph.orchid.directory.certificate;
 
 import com.subgraph.orchid.KeyCertificate;
+import com.subgraph.orchid.TorException;
 import com.subgraph.orchid.TorParsingException;
 import com.subgraph.orchid.crypto.TorPublicKey;
 import com.subgraph.orchid.crypto.TorSignature;
+import com.subgraph.orchid.data.HexDigest;
 import com.subgraph.orchid.data.IPv4Address;
 import com.subgraph.orchid.directory.parsing.BasicDocumentParsingResult;
 import com.subgraph.orchid.directory.parsing.DocumentFieldParser;
@@ -121,12 +123,42 @@ public class KeyCertificateParser implements DocumentParser<KeyCertificate> {
 	private void verifyCrossSignature(TorSignature crossSignature) {
 		TorPublicKey identityKey = currentCertificate.getAuthorityIdentityKey();
 		TorPublicKey signingKey = currentCertificate.getAuthoritySigningKey();
-		if(!signingKey.verifySignature(crossSignature, identityKey.getFingerprint())) 
+		if(identityKey == null || signingKey == null)
+			throw new TorParsingException("Cross signature on certificate before its keys.");
+		boolean verified;
+		try {
+			verified = signingKey.verifySignature(crossSignature, identityKey.getFingerprint());
+		} catch(TorException e) {
+			// a signature made with another key fails with a padding error
+			verified = false;
+		}
+		if(!verified)
 			throw new TorParsingException("Cross signature on certificate failed.");
 	}
 
 	private boolean verifyCurrentCertificate(TorSignature signature) {
-		if(!fieldParser.verifySignedEntity(currentCertificate.getAuthorityIdentityKey(), signature)) {
+		final TorPublicKey identityKey = currentCertificate.getAuthorityIdentityKey();
+		final HexDigest fingerprint = currentCertificate.getAuthorityFingerprint();
+		/*
+		 * dir-spec 3.1: "fingerprint" is the digest of the authority's identity
+		 * key.  Tor rejects a certificate whose identity key does not match
+		 * it.  Without this check, anyone who serves directory documents could
+		 * sign a certificate with keys of their own and label it with the
+		 * fingerprint of a trusted authority, since the authority is looked up
+		 * by the declared fingerprint only.
+		 */
+		if(identityKey == null || fingerprint == null || !identityKey.getFingerprint().equals(fingerprint)) {
+			resultHandler.documentInvalid(currentCertificate, "Identity key does not match fingerprint");
+			fieldParser.logWarn("Identity key does not match the fingerprint of certificate with fingerprint: "+ fingerprint);
+			return false;
+		}
+		boolean verified;
+		try {
+			verified = fieldParser.verifySignedEntity(identityKey, signature);
+		} catch(TorException e) {
+			verified = false;
+		}
+		if(!verified) {
 			resultHandler.documentInvalid(currentCertificate, "Signature failed");
 			fieldParser.logWarn("Signature failed for certificate with fingerprint: "+ currentCertificate.getAuthorityFingerprint());
 			return false;
