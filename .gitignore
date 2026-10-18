@@ -7,4 +7,5 @@ build-revision
 
 *.class
 *.jar
+!gradle/wrapper/gradle-wrapper.jar
 *.zip
