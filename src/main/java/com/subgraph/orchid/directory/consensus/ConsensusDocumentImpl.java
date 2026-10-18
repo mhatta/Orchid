@@ -14,6 +14,7 @@ import com.subgraph.orchid.DirectoryServer;
 import com.subgraph.orchid.KeyCertificate;
 import com.subgraph.orchid.RouterStatus;
 import com.subgraph.orchid.Tor;
+import com.subgraph.orchid.TorException;
 import com.subgraph.orchid.VoteAuthorityEntry;
 import com.subgraph.orchid.crypto.TorPublicKey;
 import com.subgraph.orchid.crypto.TorSignature.DigestAlgorithm;
@@ -290,12 +291,16 @@ public class ConsensusDocumentImpl implements ConsensusDocument {
         }
     }
 
+    /*
+     * The signature names the signing key it was made with (the SHA-1 digest
+     * of the key, dir-spec "directory-signature"), so look up the certificate
+     * for that key.  An authority rotates its signing key from time to time
+     * and the client may then hold certificates for both the old and the new
+     * key; picking any certificate of the authority verified the signature
+     * with the wrong key.
+     */
     private SignatureStatus verifySignatureForTrustedAuthority(DirectoryServer trustedAuthority, DirectorySignature signature) {
-        logger.debug("trustedAuthority.toString(): "+trustedAuthority.toString());
-        logger.debug("signature.getSigningKeyDigest(): "+signature.getSigningKeyDigest());
-	// https://github.com/geo-gs/Orchid/commit/22beeae1b881707491addaba6a7654e9de9f9db1
-//        final KeyCertificate certificate = trustedAuthority.getCertificateByFingerprint(signature.getSigningKeyDigest());
-        final KeyCertificate certificate = trustedAuthority.getCertificateByAuthority(trustedAuthority.getV3Identity());
+        final KeyCertificate certificate = trustedAuthority.getCertificateByFingerprint(signature.getSigningKeyDigest());
 
         if(certificate == null) {
             logger.debug("Missing certificate for signing key: "+ signature.getSigningKeyDigest());
@@ -303,19 +308,30 @@ public class ConsensusDocumentImpl implements ConsensusDocument {
             return SignatureStatus.STATUS_NEED_CERTS;
         }
         if(certificate.isExpired()) {
-            logger.debug("certificate.isExpired(): "+true);
+            logger.debug("Certificate for signing key "+ signature.getSigningKeyDigest() + " has expired");
             return SignatureStatus.STATUS_FAILED;
         }
 
         final TorPublicKey signingKey = certificate.getAuthoritySigningKey();
         final HexDigest d = (signature.useSha256()) ? signingHash256 : signingHash;
-        logger.debug("trustedAuthority.toString(): "+trustedAuthority.toString());
-        logger.debug("signature.getSigningKeyDigest(): "+signature.getSigningKeyDigest());
-        if(!signingKey.verifySignature(signature.getSignature(), d)) {
+        if(!verifySignature(signingKey, signature, d)) {
             logger.warn("Signature failed on consensus for signing key: "+ signature.getSigningKeyDigest());
             return SignatureStatus.STATUS_FAILED;
         }
         return SignatureStatus.STATUS_VERIFIED;
+    }
+
+    /*
+     * TorPublicKey#verifySignature() throws when the signature does not
+     * decrypt with the key (bad padding); that is a failed signature, not an
+     * error that should abort processing of the whole consensus.
+     */
+    private static boolean verifySignature(TorPublicKey signingKey, DirectorySignature signature, HexDigest digest) {
+        try {
+            return signingKey.verifySignature(signature.getSignature(), digest);
+        } catch(TorException e) {
+            return false;
+        }
     }
 
     @Override
