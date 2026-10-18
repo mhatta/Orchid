@@ -27,7 +27,7 @@ import com.subgraph.orchid.logging.Logger;
 
 public class CircuitIO implements DashboardRenderable {
     private static final Logger logger = Logger.getInstance(CircuitIO.class);
-    private final static long CIRCUIT_BUILD_TIMEOUT_MS = 30 * 1000;
+    final static long CIRCUIT_BUILD_TIMEOUT_MS = 30 * 1000;
     private final static long CIRCUIT_RELAY_RESPONSE_TIMEOUT = 20 * 1000;
 
     private final CircuitImpl circuit;
@@ -102,9 +102,25 @@ public class CircuitIO implements DashboardRenderable {
     }
 
     private long remainingBuildTime() {
-        final long elapsed = circuit.getStatus().getMillisecondsElapsedSinceCreated();
-        if(elapsed == 0 || elapsed >= CIRCUIT_BUILD_TIMEOUT_MS)
+        return remainingBuildTime(circuit.getStatus().getMillisecondsElapsedSinceCreated());
+    }
+
+    /*
+     * Time left to wait for a reply while the circuit is being built.
+     *
+     * An elapsed time of 0 means the build started less than a millisecond
+     * ago, which is the normal case when the first hop is reached over an
+     * already open (cached) connection: CREATE_FAST is sent immediately.
+     * Treating 0 as "no time left" made the wait for CREATED_FAST return at
+     * once, so every circuit over a reused connection failed with a timeout.
+     */
+    static long remainingBuildTime(long elapsed) {
+        if(elapsed <= 0) {
+            return CIRCUIT_BUILD_TIMEOUT_MS;
+        }
+        if(elapsed >= CIRCUIT_BUILD_TIMEOUT_MS) {
             return 0;
+        }
         return CIRCUIT_BUILD_TIMEOUT_MS - elapsed;
     }
 
