@@ -44,12 +44,19 @@ class CircuitNodeChooserWeightParameters {
 		if(tag.equals(ZERO)) {
 			return 0.0;
 		} else if (tag.equals(ONE)) {
-			return 1.0;
+			// divided by the scale like the consensus weights, giving 1.0
+			return scale;
 		} else {
 			return consensus.getBandwidthWeight(tag);
 		}
 	}
 
+	/*
+	 * The weights in the order of the VAR_ indices: Wg, Wm, We, Wd for
+	 * guards, middles, exits and guard+exits, then Wgb, Wmb, Web, Wdb, the
+	 * factors for those positions when the relay is also a directory cache,
+	 * as in compute_weighted_bandwidths() in Tor.
+	 */
 	static String[] getTagsForWeightRule(CircuitNodeChooser.WeightRule rule) {
 		switch(rule) {
 		case WEIGHT_FOR_GUARD:
@@ -64,12 +71,12 @@ class CircuitNodeChooserWeightParameters {
 			
 		case WEIGHT_FOR_EXIT:
 			return new String[] {
-					"Wee", "Wem", "Wed", "Weg",
+					"Weg", "Wem", "Wee", "Wed",
 					"Wgb", "Wmb", "Web", "Wdb"};
-			
+
 		case WEIGHT_FOR_DIR:
-			return new String[] { 
-					"Wbe", "Wbm", "Wbd", "Wbg",
+			return new String[] {
+					"Wbg", "Wbm", "Wbe", "Wbd",
 					ONE, ONE, ONE, ONE };
 			
 		case NO_WEIGHTING:
