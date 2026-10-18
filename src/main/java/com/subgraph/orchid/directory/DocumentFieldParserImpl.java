@@ -188,19 +188,15 @@ public class DocumentFieldParserImpl implements DocumentFieldParser {
     }
 
     @Override
+    /*
+     * dir-spec section 1.2: "For forward compatibility, each item MUST allow
+     * extra arguments at the end of the line unless otherwise noted."  Only
+     * the minimum number of arguments is enforced; extra ones are ignored.
+     */
     public void verifyExpectedArgumentCount(String keyword, int argumentCount) {
-        verifyExpectedArgumentCount(keyword, argumentCount, argumentCount);
-    }
-
-    private  void verifyExpectedArgumentCount(String keyword, int expectedMin, int expectedMax) {
-        final int argumentCount = argumentsRemaining();
-        if(expectedMin != -1 && argumentCount < expectedMin) {
-            throw new TorParsingException("Not enough arguments for keyword '"+ keyword +"' expected "+ expectedMin +" and got "+ argumentCount);
-        }
-
-        if(expectedMax != -1 && argumentCount > expectedMax){
-            // Is this the correct thing to do, or should just be a warning?
-            throw new TorParsingException("Too many arguments for keyword '"+ keyword +"' expected "+ expectedMax +" and got "+ argumentCount);
+        final int remaining = argumentsRemaining();
+        if(argumentCount != -1 && remaining < argumentCount) {
+            throw new TorParsingException("Not enough arguments for keyword '"+ keyword +"' expected "+ argumentCount +" and got "+ remaining);
         }
     }
 

@@ -293,10 +293,13 @@ public interface DocumentFieldParser {
 	/**
 	 * Test that the current keyword line has the correct number of arguments.
 	 * 
+	 * Extra arguments are accepted: dir-spec requires that items allow extra
+	 * arguments at the end of the line for forward compatibility.
+	 *
 	 * @param keyword The name of the current keyword. (used for errors)
-	 * @param argumentCount The expected number of arguments.
-	 * @throws TorParsingException If the number of remaining arguments does not match
-	 *         <code>argumentCount</code>.
+	 * @param argumentCount The minimum expected number of arguments.
+	 * @throws TorParsingException If fewer than <code>argumentCount</code>
+	 *         arguments remain.
 	 */
 	void verifyExpectedArgumentCount(String keyword, int argumentCount);
 
