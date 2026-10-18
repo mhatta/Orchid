@@ -35,16 +35,28 @@ public class CircuitNodeChooser {
         return chooseByBandwidth(filteredCandidates, WeightRule.WEIGHT_FOR_EXIT);
     }
 
+    /*
+     * Choose a directory cache to fetch documents from over a one-hop
+     * BEGIN_DIR circuit.
+     *
+     * Every relay with the V2Dir flag is a directory cache.  Relays have
+     * published a DirPort of 0 since Tor 0.4.6, so selecting on the DirPort
+     * left only the directory authorities as candidates and sent every
+     * download to them.  Like Tor (router_pick_directory_server_impl()),
+     * prefer caches that are not authorities, and fall back to the
+     * bootstrap directories (fallback directories and authorities) only when
+     * no cache is known, e.g. before the first consensus has been loaded.
+     */
     public Router chooseDirectory() {
         final RouterFilter filter = new RouterFilter() {
             public boolean filter(Router router) {
-                    return router.getDirectoryPort() != 0;
+                    return router.isDirectoryCache() && !router.isDirectoryAuthority();
             }
         };
         final List<Router> candidates = getFilteredRouters(filter, false);
         final Router choice = chooseByBandwidth(candidates, WeightRule.WEIGHT_FOR_DIR);
         if(choice == null) {
-            return directory.getRandomDirectoryAuthority();
+            return directory.getRandomBootstrapDirectory();
         } else {
             return choice;
         }

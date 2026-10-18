@@ -46,6 +46,16 @@ public interface Router {
 	boolean isFast();
 	boolean isStable();
 	boolean isHSDirectory();
+	/**
+	 * Return true if this router serves directory documents to clients over
+	 * BEGIN_DIR on its ORPort (the "V2Dir" flag).  Since Tor 0.4.6 relays
+	 * publish a DirPort of 0, so the DirPort tells nothing about this.
+	 */
+	boolean isDirectoryCache();
+	/**
+	 * Return true if this router is a directory authority (the "Authority" flag).
+	 */
+	boolean isDirectoryAuthority();
 	boolean exitPolicyAccepts(IPv4Address address, int port);
 	boolean exitPolicyAccepts(int port);
 }

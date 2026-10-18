@@ -23,6 +23,11 @@ public interface Directory {
 	
 	Collection<DirectoryServer> getDirectoryAuthorities();
 	DirectoryServer getRandomDirectoryAuthority();
+	/**
+	 * Choose a directory to use when no directory cache is known from a
+	 * consensus: usually a fallback directory, occasionally an authority.
+	 */
+	Router getRandomBootstrapDirectory();
 	void addCertificate(KeyCertificate certificate);
 	Set<RequiredCertificate> getRequiredCertificates();
 	void addRouterMicrodescriptors(List<RouterMicrodescriptor> microdescriptors);

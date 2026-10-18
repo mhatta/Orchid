@@ -127,7 +127,7 @@ class CircuitNodeChooserWeightParameters {
 		final double w = calculateWeight(
 				router.isExit() && !router.isBadExit(), 
 				router.isPossibleGuard(), 
-				router.getDirectoryPort() != 0);
+				router.isDirectoryCache());
 		return (w * bw) + 0.5;
 	}
 	

@@ -221,11 +221,50 @@ public class DirectoryImpl implements Directory {
         return TrustedAuthorities.getInstance().getAuthorityServers();
     }
 
+    /*
+     * Only v3 directory authorities serve the consensus and the key
+     * certificates; the bridge authority (Serge) does not and is never used
+     * by clients for directory requests.
+     */
     @Override
     public DirectoryServer getRandomDirectoryAuthority() {
-        final List<DirectoryServer> servers = TrustedAuthorities.getInstance().getAuthorityServers();
+        final List<DirectoryServer> servers = getV3Authorities();
         final int idx = random.nextInt(servers.size());
         return servers.get(idx);
+    }
+
+    private List<DirectoryServer> getV3Authorities() {
+        final List<DirectoryServer> servers = new ArrayList<DirectoryServer>();
+        for(DirectoryServer ds: TrustedAuthorities.getInstance().getAuthorityServers()) {
+            if(ds.getV3Identity() != null) {
+                servers.add(ds);
+            }
+        }
+        return servers;
+    }
+
+    /*
+     * Weights used to choose a bootstrap directory, scaled by 10.  As in Tor
+     * (router_pick_fallback_dirserver(), DirAuthorityFallbackRate), each
+     * authority is a tenth as likely to be picked as each fallback directory,
+     * so with the built-in list the authorities get well under 1% of the
+     * bootstrap requests.
+     */
+    private final static int FALLBACK_DIRECTORY_WEIGHT = 10;
+    private final static int AUTHORITY_DIRECTORY_WEIGHT = 1;
+
+    @Override
+    public Router getRandomBootstrapDirectory() {
+        final List<Router> fallbacks = FallbackDirectories.getInstance().getFallbackDirectories();
+        final List<DirectoryServer> authorities = getV3Authorities();
+        final int fallbackTotal = fallbacks.size() * FALLBACK_DIRECTORY_WEIGHT;
+        final int total = fallbackTotal + authorities.size() * AUTHORITY_DIRECTORY_WEIGHT;
+        final int r = random.nextInt(total);
+        if(r < fallbackTotal) {
+            return fallbacks.get(r / FALLBACK_DIRECTORY_WEIGHT);
+        } else {
+            return authorities.get((r - fallbackTotal) / AUTHORITY_DIRECTORY_WEIGHT);
+        }
     }
 
     @Override
@@ -388,9 +427,8 @@ public class DirectoryImpl implements Directory {
     }
 
     private boolean isValidDirectoryCache(RouterImpl router) {
-        if(router.getDirectoryPort() == 0){
-            return false;
-        }
+        // Relays publish a DirPort of 0 since Tor 0.4.6 and serve directory
+        // requests over BEGIN_DIR instead, so the DirPort is not checked.
         if(router.hasFlag("BadDirectory")){
             return false;
         }

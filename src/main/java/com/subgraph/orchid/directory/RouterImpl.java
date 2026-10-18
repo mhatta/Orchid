@@ -147,6 +147,14 @@ public class RouterImpl implements Router {
 		return hasFlag("HSDir");
 	}
 
+	public boolean isDirectoryCache() {
+		return hasFlag("V2Dir");
+	}
+
+	public boolean isDirectoryAuthority() {
+		return hasFlag("Authority");
+	}
+
 	public int getDirectoryPort() {
 		return status.getDirectoryPort();
 	}

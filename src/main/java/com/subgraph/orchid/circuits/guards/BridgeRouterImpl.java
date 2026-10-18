@@ -220,6 +220,15 @@ public class BridgeRouterImpl implements BridgeRouter {
 		return false;
 	}
 
+	public boolean isDirectoryCache() {
+		// A bridge serves directory documents to the clients that use it.
+		return true;
+	}
+
+	public boolean isDirectoryAuthority() {
+		return false;
+	}
+
 	public boolean exitPolicyAccepts(IPv4Address address, int port) {
 		return false;
 	}
