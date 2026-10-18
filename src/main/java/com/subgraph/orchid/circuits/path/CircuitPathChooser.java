@@ -56,6 +56,9 @@ public class CircuitPathChooser {
 	public List<Router> chooseInternalPath() throws InterruptedException, PathSelectionFailedException {
 		final Set<Router> excluded = Collections.emptySet();
 		final Router finalRouter = chooseMiddleNode(excluded);
+		if(finalRouter == null) {
+			throw new PathSelectionFailedException("Failed to select suitable final node for internal circuit");
+		}
 		return choosePathWithFinal(finalRouter);
 	}
 
@@ -64,6 +67,9 @@ public class CircuitPathChooser {
 	}
 
 	public List<Router> choosePathWithFinal(Router finalRouter) throws InterruptedException, PathSelectionFailedException {
+		if(finalRouter == null) {
+			throw new PathSelectionFailedException("No final node given for circuit path");
+		}
 		final Set<Router> excluded = new HashSet<Router>();
 		excludeChosenRouterAndRelated(finalRouter, excluded);
 
