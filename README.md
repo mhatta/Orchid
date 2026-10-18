@@ -108,7 +108,6 @@ A typical Orchid run will output something like this:
 2018-04-06 04:06:10,461 INFO - DirectoryImpl - Loading cached network information from disk
 2018-04-06 04:06:10,461 INFO - DirectoryImpl - Loading certificates
 2018-04-06 04:06:15,582 INFO - DirectoryImpl - Loading consensus
-2018-04-06 04:06:15,615 WARN - DirectoryImpl - Unable to verify signatures on consensus document, discarding...
 2018-04-06 04:06:15,615 INFO - DirectoryImpl - Loading microdescriptor cache
 2018-04-06 04:06:15,616 INFO - DirectoryImpl - loading state file
 2018-04-06 04:06:15,617 INFO - DirectoryDownloadTask - Downloading consensus because we have no consensus document
@@ -130,3 +129,17 @@ A typical Orchid run will output something like this:
 ```
 
 There will be a lot of `INFO - CircuitCreationTask - Cannot build circuits because we don't have enough directory information` warnings and pauses during the session.  It is usually OK, be patient.  The first time run will take much longer time than the sessions hereafter.
+
+## Directory information
+
+Like Tor, Orchid downloads the consensus and the relay descriptors from
+directory caches (relays with the `V2Dir` flag) over the ORPort.  Until it has
+a consensus it uses the fallback directories that Tor ships, and only rarely a
+directory authority.  The fallback list is compiled into
+`FallbackDirectoryList.java`; refresh it from a current Tor release from time
+to time:
+
+```
+tools/gen-fallback-dirs.py /path/to/tor/src/app/config/fallback_dirs.inc \
+    > src/main/java/com/subgraph/orchid/directory/FallbackDirectoryList.java
+```
