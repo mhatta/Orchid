@@ -265,13 +265,19 @@ public class DocumentFieldParserImpl implements DocumentFieldParser {
         return new NameIntegerParameter(name, value);
     }
 
+    /*
+     * dir-spec: Parameter ::= Keyword '=' Int32, where a Keyword consists of
+     * ASCII letters, digits and '-'.  Parameter names in use also contain '_'
+     * (e.g. "hsdir_interval") and '-' (e.g. "guard-n-primary-guards-to-use").
+     */
     private void validateParameterName(String name) {
         if(name.isEmpty()) {
             throw new TorParsingException("Parameter name cannot be empty");
         }
         for(char c: name.toCharArray()) {
-            if(!(Character.isLetterOrDigit(c) || c == '_')) {
-                throw new TorParsingException("Parameter name can only contain letters.  Rejecting: "+ name);
+            final boolean asciiAlnum = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
+            if(!(asciiAlnum || c == '_' || c == '-')) {
+                throw new TorParsingException("Parameter name may only contain ASCII letters, digits, '-' and '_'.  Rejecting: "+ name);
             }
         }
     }

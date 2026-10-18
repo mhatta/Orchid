@@ -144,11 +144,20 @@ public class PreambleSectionParser extends ConsensusDocumentSectionParser {
 		return value;
 	}
 
+	/*
+	 * A malformed entry on the "params" line is skipped with a warning
+	 * rather than discarding the whole consensus, so that a parameter added
+	 * to the network in the future cannot stop the client from bootstrapping.
+	 */
 	private void parseParams() {
 		final int remaining = fieldParser.argumentsRemaining();
 		for(int i = 0; i < remaining; i++) {
-			NameIntegerParameter p = fieldParser.parseParameter();
-			document.addParameter(p.getName(), p.getValue());
+			try {
+				NameIntegerParameter p = fieldParser.parseParameter();
+				document.addParameter(p.getName(), p.getValue());
+			} catch (TorParsingException e) {
+				fieldParser.logWarn("Ignoring malformed consensus parameter: "+ e.getMessage());
+			}
 		}
 	}
 }
