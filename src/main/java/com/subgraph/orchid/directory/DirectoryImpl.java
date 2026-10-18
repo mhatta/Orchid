@@ -173,6 +173,10 @@ public class DirectoryImpl implements Directory {
     }
 
     private void loadCertificates(ByteBuffer buffer) {
+        if(!buffer.hasRemaining()) {
+            logger.debug("No cached certificates");
+            return;
+        }
         final DocumentParser<KeyCertificate> parser = parserFactory.createKeyCertificateParser(buffer);
         final DocumentParsingResult<KeyCertificate> result = parser.parse();
         if(testResult(result, "certificates")) {
@@ -183,6 +187,16 @@ public class DirectoryImpl implements Directory {
     }
 
     private void loadConsensus(ByteBuffer buffer) {
+        /*
+         * With no cache file (first start, or a removed data directory) the
+         * parser returns an empty document, whose signature check fails and
+         * used to produce a misleading "Unable to verify signatures on
+         * consensus document" warning on every fresh start.
+         */
+        if(!buffer.hasRemaining()) {
+            logger.debug("No cached consensus");
+            return;
+        }
         final DocumentParser<ConsensusDocument> parser = parserFactory.createConsensusDocumentParser(buffer);
         final DocumentParsingResult<ConsensusDocument> result = parser.parse();
         if(testResult(result, "consensus")) {
