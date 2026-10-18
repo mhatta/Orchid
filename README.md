@@ -5,7 +5,13 @@ Orchid is a Tor client implementation and library written in pure Java.  Orchid'
 
 It was written from the Tor specification documents, which are available [here](https://www.torproject.org/docs/documentation.html.en#DesignDoc).
 
-Orchid runs on Java 5+ and the Android devices.  
+Orchid targets Java 8 bytecode and builds and runs on current JDKs (tested with JDK 21).
+
+Orchid speaks the current Tor protocols: ntor circuit handshakes, microdescriptors
+without legacy TAP keys, and **version 3 onion services** (`.onion` addresses of 56
+characters), implemented from [rend-spec v3](https://spec.torproject.org/rend-spec/)
+including client authorization (restricted discovery).  Version 2 onion services were
+removed from the Tor network in 2021 and are no longer supported.
 
 ![Orchid](https://subgraph.com/img/orchidlogo1.png)
 
@@ -17,23 +23,25 @@ Orchid can also be used as a library by any application running on the JVM. This
 
 ## How to build
 
-Now Orchid uses [Gradle](https://gradle.org/) as its build system.  Currently tested with both Java 10 and 11 on Debian sid (openjdk-10-jdk / openjdk-11-jdk).
+Orchid uses [Gradle](https://gradle.org/) (8.x) as its build system.
 
 ```
 gradle build
 ```
 
-will produce a JAR in `build/libs` directory.
+will compile, run the unit tests and produce a JAR in the `build/libs` directory.
 
 ```
 gradle fatJar
 ```
 
-will produce a fat JAR, which contains both classes and dependencies needed to run Orchid as a standalone client.
+will produce a fat JAR (`Orchid-<version>-all.jar`), which contains both classes and dependencies needed to run Orchid as a standalone client.
+
+If you cannot reach Maven Central, drop the dependency jars into `lib/` (see `lib/README`).
 
 You may find prebuilt JARs in [Releases](https://github.com/mhatta/Orchid/releases).
 
-The old Ant build system is still available, but works with Java 8 only.
+The old Ant build system (`build.xml`) is unmaintained.
 
 ## How to run
 
@@ -56,6 +64,17 @@ java -Dcom.subgraph.orchid.dashboard.port=10000 -jar Orchid-v1.0.6.jar
 ```
 
 To access the dashboard, just connect to the port (for this example `10000`) with netcat.
+
+## Connecting to onion services
+
+Any v3 onion address can be used as a SOCKS5 destination.  For services that use
+client authorization (restricted discovery), register the client's x25519 private
+key with the configuration, using the key encoding of Tor's `ClientOnionAuthDir` files:
+
+```java
+TorConfig config = client.getConfig();
+config.addOnionClientAuth("xxxx...xxxx.onion", "<52 character base32 private key>");
+```
 
 ## How to use as a library
 
