@@ -25,7 +25,7 @@ public class TorInitializationTracker {
         messageMap.put(Tor.BOOTSTRAP_STATUS_REQUESTING_DESCRIPTORS, "Asking for relay descriptors");
         messageMap.put(Tor.BOOTSTRAP_STATUS_LOADING_DESCRIPTORS, "Loading relay descriptors");
         messageMap.put(Tor.BOOTSTRAP_STATUS_CONN_OR, "Connecting to the Tor network");
-        messageMap.put(Tor.BOOTSTRAP_STATUS_HANDSHAKE_OR, "Finished Handshake with first hop");
+        messageMap.put(Tor.BOOTSTRAP_STATUS_HANDSHAKE_OR, "Finishing handshake with first hop");
         messageMap.put(Tor.BOOTSTRAP_STATUS_CIRCUIT_CREATE, "Establishing a Tor circuit");
         messageMap.put(Tor.BOOTSTRAP_STATUS_DONE, "Done");
     }

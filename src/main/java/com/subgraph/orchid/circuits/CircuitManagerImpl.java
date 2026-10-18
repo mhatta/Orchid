@@ -41,6 +41,7 @@ import com.subgraph.orchid.crypto.TorRandom;
 import com.subgraph.orchid.dashboard.DashboardRenderable;
 import com.subgraph.orchid.dashboard.DashboardRenderer;
 import com.subgraph.orchid.data.IPv4Address;
+import com.subgraph.orchid.logging.Logger;
 import com.subgraph.orchid.directory.downloader.DirectoryDownloaderImpl;
 
 public class CircuitManagerImpl implements CircuitManager, DashboardRenderable {
@@ -312,6 +313,7 @@ public class CircuitManagerImpl implements CircuitManager, DashboardRenderable {
 	}
 
 	private static class DirectoryCircuitResult implements CircuitBuildHandler {
+		private static final Logger logger = Logger.getInstance(DirectoryCircuitResult.class);
 
 		private boolean isFailed;
 		
@@ -320,10 +322,12 @@ public class CircuitManagerImpl implements CircuitManager, DashboardRenderable {
 		public void circuitBuildCompleted(Circuit circuit) {}
 		
 		public void connectionFailed(String reason) {
+			logger.info("Directory circuit connection failed: "+ reason);
 			isFailed = true;
 		}
 
 		public void circuitBuildFailed(String reason) {
+			logger.info("Directory circuit build failed: "+ reason);
 			isFailed = true;
 		}
 		

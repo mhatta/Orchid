@@ -32,7 +32,7 @@ public class GuardProbeTask implements Runnable{
             entryGuards.probeConnectionSucceeded(entry);
             return;
         } catch (ConnectionIOException e) {
-            logger.debug("IO exception probing entry guard "+ router + " : "+ e);
+            logger.info("Failed to connect to entry guard "+ router + " : "+ e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } catch(Exception e) {
