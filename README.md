@@ -39,6 +39,11 @@ will produce a fat JAR (`Orchid-<version>-all.jar`), which contains both classes
 
 If you cannot reach Maven Central, drop the dependency jars into `lib/` (see `lib/README`).
 
+The version comes from the git tag (`git describe`): a build of the commit tagged
+`v2.0.0` is version `2.0.0`, and a later commit builds as, for example,
+`2.0.0-3-g1234abcd`.  There is no version number to edit in the source; to make
+a release, tag the commit (`git tag -a v2.0.1`) and build it.
+
 You may find prebuilt JARs in [Releases](https://github.com/mhatta/Orchid/releases).
 
 The old Ant build system (`build.xml`) is unmaintained.
@@ -48,7 +53,7 @@ The old Ant build system (`build.xml`) is unmaintained.
 To start the Orchid SOCKS5 proxy, perform the following:
 
 ```
-java -jar Orchid-v1.0.6.jar
+java -jar Orchid-<version>-all.jar
 ```
 
 To test Orchid, you can tell your web browser to use Orchid as a SOCKS5 proxy (the default listening port is `9150`) - however it is important to note that Orchid + your browser is **NOT** a secure replacement for [the Tor Browser Bundle](https://www.torproject.org/projects/torbrowser.htm), which has many other enhancements beyond Tor.
@@ -60,7 +65,7 @@ For example, with Mozilla Firefox, by default, DNS lookups are not sent over a c
 Orchid also includes a "dashboard" feature to observe information about the internal state of Tor. To start the dashboard, set the following property when the JAR is run like:
 
 ```
-java -Dcom.subgraph.orchid.dashboard.port=10000 -jar Orchid-v1.0.6.jar
+java -Dcom.subgraph.orchid.dashboard.port=10000 -jar Orchid-<version>-all.jar
 ```
 
 To access the dashboard, just connect to the port (for this example `10000`) with netcat.

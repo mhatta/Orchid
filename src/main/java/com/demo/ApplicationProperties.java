@@ -1,11 +1,23 @@
 package com.demo;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Properties;
+
 import com.subgraph.orchid.http.ssl.ExportedCertificate;
 import com.subgraph.orchid.logging.SysLog;
 
 public class ApplicationProperties {
     private static final String NAME = "Orchid";
-    private static final String VERSION = "1.0.6";
+    /*
+     * Written by the Gradle build from the git release tag (see build.gradle);
+     * there is no version number to update by hand.  The resource lives in
+     * Orchid's package rather than at the classpath root so that it cannot
+     * be shadowed by a file of the application that uses Orchid.
+     */
+    static final String VERSION_RESOURCE = "/com/subgraph/orchid/version.properties";
+    static final String UNKNOWN_VERSION = "unknown";
+    private static final String VERSION = loadVersion();
     /** System property selecting the log level, e.g. -Dcom.subgraph.orchid.logLevel=DEBUG */
     public static final String LOG_LEVEL_PROPERTY = "com.subgraph.orchid.logLevel";
     private static SysLog LOGGING_THRESHOLD = initialLoggingThreshold();
@@ -40,8 +52,46 @@ public class ApplicationProperties {
         return NAME;
     }
     
+    /**
+     * The version of this build, e.g. "2.0.0" for a release or
+     * "2.0.0-3-g1234abcd" for a later commit, or "unknown" when Orchid was
+     * not built with Gradle.
+     */
     public static String getVersion(){
         return VERSION;
+    }
+
+    private static String loadVersion(){
+        final InputStream input = ApplicationProperties.class.getResourceAsStream(VERSION_RESOURCE);
+        if(input == null){
+            return UNKNOWN_VERSION;
+        }
+        try {
+            return parseVersion(input);
+        } finally {
+            try {
+                input.close();
+            } catch (IOException e) {
+                // ignore
+            }
+        }
+    }
+
+    static String parseVersion(InputStream input){
+        final Properties properties = new Properties();
+        try {
+            properties.load(input);
+        } catch (IOException e) {
+            return UNKNOWN_VERSION;
+        } catch (IllegalArgumentException e) {
+            return UNKNOWN_VERSION;
+        }
+        final String version = properties.getProperty("version");
+        if(version == null || version.trim().isEmpty() || version.trim().indexOf(' ') >= 0){
+            // The state file stores "<name>-<version>" as one token.
+            return UNKNOWN_VERSION;
+        }
+        return version.trim();
     }
     
     private static SysLog initialLoggingThreshold(){

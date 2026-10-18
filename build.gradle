@@ -97,15 +97,37 @@ def getGitSha() {
     }
 }
 
+/*
+ * The version is taken from git and nowhere else.  "git describe" gives the
+ * release tag (v2.0.0) for a tagged commit, v2.0.0-3-g1234abcd for the third
+ * commit after it, and appends "-dirty" when tracked files have uncommitted
+ * changes, so a build that is not a release cannot pass for one.  It names
+ * the jars and is written into com/subgraph/orchid/version.properties, which
+ * Orchid reports at runtime (ApplicationProperties#getVersion()).
+ *
+ * Source archives made by git archive, such as the ones GitHub offers for a
+ * release, have no .git directory; git fills in .git-archival.txt for them
+ * (export-subst in .gitattributes).
+ */
 def getReleaseTag() {
     try {
-        def proc = ["git", "describe", "--abbrev=0", "--tags"].execute(null, projectDir)
+        def proc = ["git", "describe", "--tags", "--dirty", "--match", "v[0-9]*"].execute(null, projectDir)
+        def out = proc.text.trim()
         proc.waitFor()
-        def out = proc.in.text.trim()
-        return out.isEmpty() ? '0.0.0' : out
+        if(proc.exitValue() == 0 && !out.isEmpty()) {
+            return out
+        }
     } catch(all) {
-        return '0.0.0'
+        // no git; try the archive information below
     }
+    def archival = file('.git-archival.txt')
+    if(archival.exists()) {
+        def m = archival.text =~ /(?m)^describe:\s*(v[0-9]\S*)\s*$/
+        if(m.find()) {
+            return m.group(1)
+        }
+    }
+    return '0.0.0'
 }
 
 version = getReleaseTag()
@@ -114,12 +136,25 @@ processResources {
     def fileName = rootProject.name + "-" + version + ".jar"
     def gitSha = getGitSha()
     def releaseDate = new Date().toString()
+    def orchidVersion = version.toString().replaceFirst(/^v/, '')
+
+    // Declared so that the resources are filtered again when the version
+    // changes, for example after a new tag; otherwise Gradle considers the
+    // task up to date and keeps the old values.
+    inputs.property('orchidVersion', orchidVersion)
+    inputs.property('gitSha', gitSha)
 
     filesMatching('application.properties') {
         filter { String line ->
             if(line =~ /^file\.name=/) return "file.name=$fileName"
             if(line =~ /^git\.sha=/) return "git.sha=$gitSha"
             if(line =~ /^release\.date=/) return "release.date=$releaseDate"
+            return line
+        }
+    }
+    filesMatching('com/subgraph/orchid/version.properties') {
+        filter { String line ->
+            if(line =~ /^version=/) return "version=$orchidVersion"
             return line
         }
     }
