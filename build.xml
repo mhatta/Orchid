@@ -81,7 +81,6 @@
     <taskdef resource="proguard/ant/task.properties" classpath="lib/proguard-6.0.1.jar" />
     <proguard>
       -injars ${orchid.jarfile}
-      -injars lib/guava-19.0.jar (!META-INF/MANIFEST.MF)
       -injars lib/commons-io-2.6.jar (!META-INF/MANIFEST.MF)
       -injars lib/jsoup-1.10.2.jar (!META-INF/MANIFEST.MF)
       -libraryjars "${java.home}/lib/rt.jar"
@@ -94,7 +93,6 @@
       -dontoptimize
       -dontobfuscate
       -dontwarn sun.misc.Unsafe
-      -dontwarn com.google.common.collect.MinMaxPriorityQueue
       -keepclasseswithmembers public class * {
         public static void main(java.lang.String[]);
       }

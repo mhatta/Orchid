@@ -3,7 +3,6 @@ You may put *.jar in this directory if you need to build Orchid offline (== can 
 Needed jars are:
 
 commons-io
-guava
 jsoup
 proguard
 xmlrpc-client
