@@ -17,12 +17,22 @@ public class CellImpl implements Cell {
 		return new CellImpl(circuitId, command, payloadLength);
 	}
 
-	public static CellImpl readFromInputStream(InputStream input) throws IOException {
-		final ByteBuffer header = readHeaderFromInputStream(input);
-		final int circuitId = header.getShort() & 0xFFFF;
-		final int command = header.get() & 0xFF;
-		
-		if(command == VERSIONS || command > 127) {
+	/**
+	 * Read one cell from <code>input</code>.
+	 *
+	 * @param input The stream to read from.
+	 * @param wireCircIdLen The width of the circuit id field on the wire: 2
+	 *        before the link protocol is negotiated and for link protocol 3,
+	 *        4 for link protocol 4 and later.
+	 */
+	public static CellImpl readFromInputStream(InputStream input, int wireCircIdLen) throws IOException {
+		final byte[] header = new byte[wireCircIdLen + 1];
+		readAll(input, header);
+		final ByteBuffer bb = ByteBuffer.wrap(header);
+		final int circuitId = (wireCircIdLen == CIRCID_LEN) ? bb.getInt() : (bb.getShort() & 0xFFFF);
+		final int command = bb.get() & 0xFF;
+
+		if(isVariableLengthCommand(command)) {
 			return readVarCell(circuitId, command, input);
 		}
 
@@ -32,10 +42,32 @@ public class CellImpl implements Cell {
 		return cell;
 	}
 
-	private static ByteBuffer readHeaderFromInputStream(InputStream input) throws IOException {
-		final byte[] cellHeader = new byte[CELL_HEADER_LEN];
-		readAll(input, cellHeader);
-		return ByteBuffer.wrap(cellHeader);
+	/**
+	 * VERSIONS and the commands from 128 up are variable length cells.
+	 */
+	public static boolean isVariableLengthCommand(int command) {
+		return command == VERSIONS || command >= 128;
+	}
+
+	/**
+	 * Return the bytes of <code>cell</code> as they are sent on a connection
+	 * whose circuit id field is <code>wireCircIdLen</code> bytes wide.
+	 */
+	public static byte[] toWireBytes(Cell cell, int wireCircIdLen) {
+		final byte[] bytes = cell.getCellBytes();
+		if(wireCircIdLen == CIRCID_LEN) {
+			return bytes;
+		}
+		if(wireCircIdLen != WIRE_CIRCID_LEN_V3) {
+			throw new IllegalArgumentException("Bad circuit id length: "+ wireCircIdLen);
+		}
+		if((cell.getCircuitId() & 0xFFFF0000) != 0) {
+			throw new IllegalArgumentException("Circuit id "+ Integer.toHexString(cell.getCircuitId()) +" does not fit in 2 bytes");
+		}
+		final int skip = CIRCID_LEN - WIRE_CIRCID_LEN_V3;
+		final byte[] wire = new byte[bytes.length - skip];
+		System.arraycopy(bytes, skip, wire, 0, wire.length);
+		return wire;
 	}
 
 	private static CellImpl readVarCell(int circuitId, int command, InputStream input) throws IOException {
@@ -70,7 +102,7 @@ public class CellImpl implements Cell {
 		this.circuitId = circuitId;
 		this.command = command;
 		this.cellBuffer = ByteBuffer.wrap(new byte[CELL_VAR_HEADER_LEN + payloadLength]);
-		cellBuffer.putShort((short)circuitId);
+		cellBuffer.putInt(circuitId);
 		cellBuffer.put((byte)command);
 		cellBuffer.putShort((short) payloadLength);
 		cellBuffer.mark();
@@ -81,14 +113,14 @@ public class CellImpl implements Cell {
 		this.circuitId = circuitId;
 		this.command = command;
 		this.cellBuffer = ByteBuffer.wrap(new byte[CELL_LEN]);
-		cellBuffer.putShort((short) circuitId);
+		cellBuffer.putInt(circuitId);
 		cellBuffer.put((byte) command);
 		cellBuffer.mark();
 	}
 
 	protected CellImpl(byte[] rawCell) {
 		this.cellBuffer = ByteBuffer.wrap(rawCell);
-		this.circuitId = cellBuffer.getShort() & 0xFFFF;
+		this.circuitId = cellBuffer.getInt();
 		this.command = cellBuffer.get() & 0xFF;
 		cellBuffer.mark();
 	}
@@ -177,7 +209,7 @@ public class CellImpl implements Cell {
 	}
 
 	public String toString() {
-		return "Cell: circuit_id="+ circuitId +" command="+ command +" payload_len="+ cellBuffer.position();
+		return "Cell: circuit_id="+ Integer.toHexString(circuitId) +" command="+ command +" payload_len="+ cellBuffer.position();
 	}
 
 	public static String errorToDescription(int errorCode) {

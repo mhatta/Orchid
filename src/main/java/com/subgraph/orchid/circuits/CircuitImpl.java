@@ -259,7 +259,7 @@ public abstract class CircuitImpl implements Circuit, DashboardRenderable {
     protected abstract String getCircuitTypeLabel();
 
     public String toString() {
-        return "  Circuit ("+ getCircuitTypeLabel() + ") id="+ getCircuitId() +" state=" + status.getStateAsString() +" "+ pathToString();
+        return "  Circuit ("+ getCircuitTypeLabel() + ") id="+ Integer.toHexString(getCircuitId()) +" state=" + status.getStateAsString() +" "+ pathToString();
     }
 
 

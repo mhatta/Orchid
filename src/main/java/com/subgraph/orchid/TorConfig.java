@@ -85,10 +85,24 @@ public interface TorConfig {
 	boolean getClientRejectInternalAddress();
 	void setClientRejectInternalAddress(boolean value);
 	
+	/**
+	 * @deprecated Ignored.  Orchid always uses the in-protocol (v3) link
+	 * handshake, which every relay supports.
+	 */
+	@Deprecated
 	boolean getHandshakeV3Enabled();
+	/** @deprecated Ignored; see {@link #getHandshakeV3Enabled()}. */
+	@Deprecated
 	void setHandshakeV3Enabled(boolean value);
-	
+
+	/**
+	 * @deprecated Ignored.  The renegotiation based v2 link handshake is
+	 * no longer supported by relays, and Orchid no longer implements it.
+	 */
+	@Deprecated
 	boolean getHandshakeV2Enabled();
+	/** @deprecated Ignored; see {@link #getHandshakeV2Enabled()}. */
+	@Deprecated
 	void setHandshakeV2Enabled(boolean value);
 	
 	/**

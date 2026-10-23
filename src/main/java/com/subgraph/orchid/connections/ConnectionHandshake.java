@@ -24,14 +24,49 @@ import com.subgraph.orchid.logging.Logger;
 public abstract class ConnectionHandshake {
     private static final Logger logger = Logger.getInstance(ConnectionHandshake.class);
 	
+    /**
+     * The link protocol versions Orchid offers in its VERSIONS cell.
+     *
+     * Version 4 widens circuit ids to 4 bytes and version 5 adds link
+     * padding (which Orchid receives and ignores, and does not negotiate).
+     * Every relay on the network supports both; version 3 and the older
+     * renegotiation based handshakes are not offered any more.
+     */
+    static final int[] SUPPORTED_LINK_VERSIONS = { 4, 5 };
+
     static ConnectionHandshake createHandshake(TorConfig config, ConnectionImpl connection, SSLSocket socket) throws ConnectionHandshakeException {
-        if(config.getHandshakeV3Enabled() && ConnectionHandshakeV3.sessionSupportsHandshake(socket.getSession())) {
+        if(ConnectionHandshakeV3.sessionSupportsHandshake(socket.getSession())) {
             return new ConnectionHandshakeV3(connection, socket);
-        } else if(config.getHandshakeV2Enabled()) {
-            return new ConnectionHandshakeV2(connection, socket);
         } else {
-            throw new ConnectionHandshakeException("No valid handshake type available for this connection");
+            throw new ConnectionHandshakeException("Relay does not support the in-protocol (v3) link handshake");
         }
+    }
+
+    /**
+     * Return the versions listed in a VERSIONS cell, without changing the
+     * cell's read position.
+     */
+    static List<Integer> readVersions(Cell versionsCell) {
+        final List<Integer> versions = new ArrayList<Integer>();
+        final int end = versionsCell.getCellBytes().length - 1;
+        for(int i = Cell.CELL_VAR_HEADER_LEN; i < end; i += 2) {
+            versions.add(versionsCell.getShortAt(i));
+        }
+        return versions;
+    }
+
+    /**
+     * Return the highest link protocol version that both Orchid and the
+     * relay support, or 0 if there is none.
+     */
+    static int chooseLinkProtocolVersion(List<Integer> remoteVersions) {
+        int best = 0;
+        for(int v: SUPPORTED_LINK_VERSIONS) {
+            if(v > best && remoteVersions.contains(v)) {
+                best = v;
+            }
+        }
+        return best;
     }
 
     protected final ConnectionImpl connection;
@@ -84,8 +119,9 @@ public abstract class ConnectionHandshake {
 
     protected void receiveVersions() throws ConnectionHandshakeException {
         final Cell c = expectCell(Cell.VERSIONS);
-        while(c.cellBytesRemaining() >= 2) {
-            remoteVersions.add(c.getShort());
+        remoteVersions.addAll(readVersions(c));
+        if(connection.getLinkProtocolVersion() == 0) {
+            throw new ConnectionHandshakeException("No common link protocol version, relay offers "+ remoteVersions);
         }
     }
 

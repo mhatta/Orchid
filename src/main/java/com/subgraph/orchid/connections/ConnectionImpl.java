@@ -60,6 +60,22 @@ public class ConnectionImpl implements Connection, DashboardRenderable {
     private final TorInitializationTracker initializationTracker;
     private final boolean isDirectoryConnection;
 
+    /*
+     * Circuit ids are 4 bytes wide (link protocol 4 and later), and the side
+     * that opened the connection sets the most significant bit (tor-spec
+     * section 5.1.1).  Only the lower 31 bits are counted here.
+     */
+    private final static int CIRCID_INITIATOR_BIT = 0x80000000;
+    private final static int CIRCID_COUNTER_MAX = 0x7FFFFFFF;
+
+    /*
+     * The link protocol version agreed on in the VERSIONS exchange, or 0
+     * before it has been agreed on.  It is set by the cell reading thread
+     * as soon as the VERSIONS cell arrives, because the width of the
+     * circuit id of the cells that follow depends on it.
+     */
+    private volatile int linkProtocolVersion;
+
     private int currentId = 1;
     private boolean isConnected;
     private volatile boolean isClosed;
@@ -85,7 +101,7 @@ public class ConnectionImpl implements Connection, DashboardRenderable {
 
     private void initializeCurrentCircuitId() {
         final TorRandom random = new TorRandom();
-        currentId = random.nextInt(0xFFFF) + 1;
+        currentId = random.nextInt(CIRCID_COUNTER_MAX) + 1;
     }
 
     @Override
@@ -102,10 +118,10 @@ public class ConnectionImpl implements Connection, DashboardRenderable {
     public int bindCircuit(Circuit circuit) {
         circuitsLock.lock();
         try {
-            while(circuitMap.containsKey(currentId)) {
+            while(circuitMap.containsKey(currentId | CIRCID_INITIATOR_BIT)) {
                 incrementNextId();
             }
-            final int id = currentId;
+            final int id = currentId | CIRCID_INITIATOR_BIT;
             incrementNextId();
             circuitMap.put(id, circuit);
             return id;
@@ -116,7 +132,7 @@ public class ConnectionImpl implements Connection, DashboardRenderable {
 
     private void incrementNextId() {
         currentId++;
-        if(currentId > 0xFFFF){
+        if(currentId > CIRCID_COUNTER_MAX || currentId <= 0){
                 currentId = 1;
         }
     }
@@ -190,7 +206,7 @@ public class ConnectionImpl implements Connection, DashboardRenderable {
         outputLock.lock();
         try {
             try {
-                output.write(cell.getCellBytes());
+                output.write(CellImpl.toWireBytes(cell, wireCircIdLengthFor(cell)));
             } catch (IOException e) {
                 logger.debug("IOException writing cell to connection "+ e.getMessage());
                 closeSocket();
@@ -203,7 +219,7 @@ public class ConnectionImpl implements Connection, DashboardRenderable {
 
     private Cell recvCell() throws ConnectionIOException {
         try {
-            return CellImpl.readFromInputStream(input);
+            return CellImpl.readFromInputStream(input, wireCircIdLength());
         } catch(EOFException e) {
             closeSocket();
             throw new ConnectionIOException();
@@ -213,6 +229,35 @@ public class ConnectionImpl implements Connection, DashboardRenderable {
                 closeSocket();
             }
             throw new ConnectionIOException(e.getClass().getName() + " " + e.getMessage());
+        }
+    }
+
+    /**
+     * The link protocol version agreed on with the relay, or 0 if the
+     * VERSIONS exchange has not completed or found no common version.
+     */
+    int getLinkProtocolVersion() {
+        return linkProtocolVersion;
+    }
+
+    /* The width of the circuit id field of cells on this connection. */
+    private int wireCircIdLength() {
+        return (linkProtocolVersion >= 4) ? Cell.CIRCID_LEN : Cell.WIRE_CIRCID_LEN_V3;
+    }
+
+    /* VERSIONS cells always have a 2 byte circuit id (tor-spec section 4.1). */
+    private int wireCircIdLengthFor(Cell cell) {
+        return (cell.getCommand() == Cell.VERSIONS) ? Cell.WIRE_CIRCID_LEN_V3 : wireCircIdLength();
+    }
+
+    /*
+     * Runs in the cell reading thread, before the next cell is read: record
+     * the link protocol version so that the following cells are read with
+     * the right circuit id width.  The handshake checks the result.
+     */
+    private void processVersionsCell(Cell cell) {
+        if(linkProtocolVersion == 0) {
+            linkProtocolVersion = ConnectionHandshake.chooseLinkProtocolVersion(ConnectionHandshake.readVersions(cell));
         }
     }
 
@@ -294,20 +339,24 @@ public class ConnectionImpl implements Connection, DashboardRenderable {
         }
 
         switch(command) {
-        case Cell.NETINFO:
         case Cell.VERSIONS:
+            processVersionsCell(cell);
+            connectionControlCells.add(cell);
+            break;
+        case Cell.NETINFO:
         case Cell.CERTS:
         case Cell.AUTH_CHALLENGE:
             connectionControlCells.add(cell);
             break;
 
-        case Cell.CREATED:
+        case Cell.CREATED2:
         case Cell.CREATED_FAST:
         case Cell.DESTROY:
             processControlCell(cell);
             break;
         default:
-            // Ignore everything else
+            // Ignore everything else, including the PADDING and VPADDING
+            // cells relays send on link protocol 5 connections.
             break;
         }
     }
@@ -318,7 +367,7 @@ public class ConnectionImpl implements Connection, DashboardRenderable {
         try {
             circuit = circuitMap.get(cell.getCircuitId());
             if(circuit == null) {
-                logger.warn("Could not deliver relay cell for circuit id = "+ cell.getCircuitId() +" on connection "+ this +". Circuit not found");
+                logger.warn("Could not deliver relay cell for circuit id = "+ Integer.toHexString(cell.getCircuitId()) +" on connection "+ this +". Circuit not found");
                 return;
             }
         } finally {

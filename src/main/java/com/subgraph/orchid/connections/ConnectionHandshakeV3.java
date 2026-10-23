@@ -28,7 +28,7 @@ public class ConnectionHandshakeV3 extends ConnectionHandshake {
 	}
 
 	void runHandshake() throws IOException, InterruptedException, ConnectionIOException {
-		sendVersions(3);
+		sendVersions(SUPPORTED_LINK_VERSIONS);
 		receiveVersions();
 		recvCerts();
 		recvAuthChallengeAndNetinfo();

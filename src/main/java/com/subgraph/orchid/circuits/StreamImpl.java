@@ -213,7 +213,7 @@ public class StreamImpl implements Stream, DashboardRenderable {
 
     public void dashboardRender(DashboardRenderer renderer, PrintWriter writer, int flags) throws IOException {
         writer.print("     ");
-        writer.print("[Stream stream_id="+ streamId + " cid="+ circuit.getCircuitId());
+        writer.print("[Stream stream_id="+ streamId + " cid="+ Integer.toHexString(circuit.getCircuitId()));
         if(relayConnectedReceived) {
             writer.print(" sent="+outputStream.getBytesSent() + " recv="+ inputStream.getBytesReceived());
         } else {

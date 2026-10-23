@@ -6,10 +6,14 @@ import java.nio.ByteBuffer;
 
 public interface RelayCell extends Cell {
 
-	final static int LENGTH_OFFSET = 12;
-	final static int RECOGNIZED_OFFSET = 4;
-	final static int DIGEST_OFFSET = 8;
-	final static int HEADER_SIZE = 14;
+	/*
+	 * Offsets of the relay header fields from the start of the cell; the
+	 * relay header follows the cell header (circuit id and command).
+	 */
+	final static int RECOGNIZED_OFFSET = Cell.CELL_HEADER_LEN + 1;
+	final static int DIGEST_OFFSET = Cell.CELL_HEADER_LEN + 5;
+	final static int LENGTH_OFFSET = Cell.CELL_HEADER_LEN + 9;
+	final static int HEADER_SIZE = Cell.CELL_HEADER_LEN + 11;
 
 	final static int RELAY_BEGIN = 1;
 	final static int RELAY_DATA = 2;

@@ -31,6 +31,15 @@ public interface Cell {
 
 	/** Command constant for a RELAY_EARLY type cell. */
 	final static int RELAY_EARLY = 9;
+
+	/** Command constant for a CREATE2 type cell. */
+	final static int CREATE2 = 10;
+
+	/** Command constant for a CREATED2 type cell. */
+	final static int CREATED2 = 11;
+
+	/** Command constant for a PADDING_NEGOTIATE type cell (link protocol 5). */
+	final static int PADDING_NEGOTIATE = 12;
 	
 	final static int VPADDING = 128;
 	final static int CERTS = 129;
@@ -57,24 +66,41 @@ public interface Cell {
 	final static int ADRESS_TYPE_IPV6      = 0x06;
 
 	/**
-	 * The fixed size of a standard cell.
+	 * The length of the circuit id field of a cell as it is held in memory.
+	 * This is the width used on the wire by link protocol 4 and later; with
+	 * older link protocols (and for VERSIONS cells, which are always sent
+	 * with a 2 byte circuit id) the connection converts the header when the
+	 * cell is read or written (see {@link #WIRE_CIRCID_LEN_V3}).
 	 */
-	final static int CELL_LEN = 512;
+	final static int CIRCID_LEN = 4;
 
 	/**
-	 * The length of a standard cell header.
+	 * The length of the circuit id field on the wire for link protocol 3 and
+	 * earlier, and for VERSIONS cells on every link protocol.
 	 */
-	final static int CELL_HEADER_LEN = 3;
+	final static int WIRE_CIRCID_LEN_V3 = 2;
 
 	/**
-	 * The header length for a variable length cell (ie: VERSIONS)
+	 * The length of a standard cell header: circuit id and command.
 	 */
-	final static int CELL_VAR_HEADER_LEN = 5;
+	final static int CELL_HEADER_LEN = CIRCID_LEN + 1;
+
+	/**
+	 * The header length for a variable length cell (ie: VERSIONS): circuit
+	 * id, command and a 2 byte length field.
+	 */
+	final static int CELL_VAR_HEADER_LEN = CIRCID_LEN + 3;
 
 	/**
 	 * The length of the payload space in a standard cell.
 	 */
-	final static int CELL_PAYLOAD_LEN = CELL_LEN - CELL_HEADER_LEN;
+	final static int CELL_PAYLOAD_LEN = 509;
+
+	/**
+	 * The size of a standard cell as it is held in memory (with a 4 byte
+	 * circuit id).
+	 */
+	final static int CELL_LEN = CELL_HEADER_LEN + CELL_PAYLOAD_LEN;
 
 	/**
 	 * Return the circuit id field from this cell.

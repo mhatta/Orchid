@@ -89,12 +89,7 @@ public class Tor {
      * @see TorConfig
      */
     static public TorConfig createConfig() {
-        final TorConfig config = new TorConfigImpl();
-        if(isAndroidRuntime()) {
-            logger.warn("Android Runtime detected, disabling V2 Link protocol");
-            config.setHandshakeV2Enabled(false);
-        }
-        return config;
+        return new TorConfigImpl();
     }
 
     static public TorInitializationTracker createInitalizationTracker() {
