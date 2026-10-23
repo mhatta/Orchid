@@ -55,36 +55,47 @@ public interface CircuitNode {
 	void waitForSendWindow();
 
 	/**
-	 * If the packaging window for this node is open (ie: greater than 0) this method
-	 * decrements the packaging window by 1 and returns immediately, otherwise it will
-	 * block until the circuit is destroyed or the window is incremented by receiving 
-	 * a RELAY_SENDME cell from this node.  This method will always decrement the packaging
-	 * window before returning unless the circuit has been destroyed. 
+	 * If the packaging window for this node is open (ie: greater than 0),
+	 * decrement it by one and return the value it had before; otherwise
+	 * return 0 without changing it.  Call {@link #waitForSendWindow()} to
+	 * wait for the window to open.
+	 *
+	 * @return The packaging window before it was decremented, or 0 if it
+	 *         was closed.
 	 */
-	void waitForSendWindowAndDecrement();
+	int takeSendWindow();
 
 	/**
-	 * This method is called to signal that a RELAY_SENDME cell has been received from this
-	 * node and the packaging window should be incremented.  This will also wake up any threads
-	 * that are waiting for the packaging window to open.
+	 * Called right after a RELAY_DATA cell has been added to the 'forward'
+	 * digest of this node, with the value {@link #takeSendWindow()} returned
+	 * for it.  If the relay will acknowledge this cell with a SENDME, its
+	 * digest is remembered so that the authenticated SENDME can be checked.
 	 */
-	void incrementSendWindow();
+	void dataCellSent(int sendWindowBefore);
 
 	/**
-	 * This method is called when a RELAY_DATA cell is received from this node to decrement
-	 * the deliver window counter.
+	 * Process a circuit level RELAY_SENDME cell received from this node:
+	 * check its authentication tag and, if it is acceptable, open the
+	 * packaging window by one increment and wake up the threads waiting for
+	 * it.
+	 *
+	 * @param tag The tag of a version 1 (authenticated) SENDME, or null for
+	 *            a version 0 SENDME.
+	 * @return false if the SENDME acknowledges no cell that was sent or its
+	 *         tag does not match, in which case the circuit must be closed.
 	 */
-	void decrementDeliverWindow();
+	boolean processSendme(byte[] tag);
 
 	/**
-	 * Examines the delivery window and determines if it would be an appropriate time to
-	 * send a RELAY_SENDME cell.  If this method returns true, it increments the delivery
-	 * window assuming that a RELAY_SENDME cell will be transmitted.
-	 * 
-	 * @return Returns true if the deliver window is small enough that sending a RELAY_SENDME
-	 * cell would be appropriate.
+	 * Called when a RELAY_DATA cell has been received from this node, right
+	 * after it was added to the 'backward' digest.  Decrements the deliver
+	 * window and, if it is time to send a circuit level SENDME, increments
+	 * it again and returns the tag to put in the authenticated SENDME: the
+	 * running digest of the cells received from this node.
+	 *
+	 * @return The SENDME tag if a SENDME must be sent now, otherwise null.
 	 */
-	boolean considerSendingSendme();
-	
+	byte[] dataCellReceived();
+
 	boolean decryptBackwardCell(Cell cell);
 }

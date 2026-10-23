@@ -8,6 +8,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -60,8 +61,18 @@ class FakeRelay implements Connection {
 		 * the direction towards the client.
 		 */
 		CircuitNodeCryptoState state;
-		final List<RelayCell> received = new ArrayList<RelayCell>();
+		final List<RelayCell> received = Collections.synchronizedList(new ArrayList<RelayCell>());
 		List<Integer> extendLinkSpecifierTypes;
+
+		/* Flow control, as a relay does it */
+		int dataReceived;
+		int dataSent;
+		/* The tags of the SENDMEs the client owes for the DATA cells we sent */
+		final List<byte[]> sentDataTags = new ArrayList<byte[]>();
+		/* How to answer every CIRCWINDOW_INCREMENT DATA cells received */
+		volatile boolean answerSendmes = true;
+		volatile int answerSendmeVersion = CircuitNodeImpl.SENDME_VERSION_AUTHENTICATED;
+		volatile boolean corruptSendmeTag;
 
 		Hop(String nickname, boolean hasNtorKey) {
 			final TorRandom random = new TorRandom();
@@ -230,7 +241,38 @@ class FakeRelay implements Connection {
 		hop.received.add(cell);
 		if(cell.getRelayCommand() == RelayCell.RELAY_EXTEND2) {
 			processExtend2(index, cell);
+		} else if(cell.getRelayCommand() == RelayCell.RELAY_DATA) {
+			processData(index);
 		}
+	}
+
+	/*
+	 * Acknowledge each group of CIRCWINDOW_INCREMENT DATA cells with a
+	 * SENDME whose tag is the running digest of the cells received.
+	 */
+	private void processData(int index) {
+		final Hop hop = hops.get(index);
+		hop.dataReceived++;
+		if(!hop.answerSendmes || hop.dataReceived % CircuitNodeImpl.CIRCWINDOW_INCREMENT != 0) {
+			return;
+		}
+		if(hop.answerSendmeVersion == 0) {
+			sendBackward(index, RelayCell.RELAY_SENDME, 0, new byte[0]);
+			return;
+		}
+		final byte[] tag = CircuitNodeImpl.sendmeTag(hop.state.getBackwardDigestBytes());
+		if(hop.corruptSendmeTag) {
+			tag[0] ^= 1;
+		}
+		sendBackward(index, RelayCell.RELAY_SENDME, 0, sendmeV1Payload(tag));
+	}
+
+	static byte[] sendmeV1Payload(byte[] tag) {
+		final ByteBuffer bb = ByteBuffer.allocate(3 + tag.length);
+		bb.put((byte) CircuitNodeImpl.SENDME_VERSION_AUTHENTICATED);
+		bb.putShort((short) tag.length);
+		bb.put(tag);
+		return bb.array();
 	}
 
 	private void processExtend2(int index, RelayCell cell) {
@@ -277,6 +319,13 @@ class FakeRelay implements Connection {
 		final CircuitNodeCryptoState state = hops.get(index).state;
 		state.updateForwardDigest(cell);
 		cell.setDigest(state.getForwardDigestBytes());
+		if(relayCommand == RelayCell.RELAY_DATA) {
+			final Hop hop = hops.get(index);
+			hop.dataSent++;
+			if(hop.dataSent % CircuitNodeImpl.CIRCWINDOW_INCREMENT == 0) {
+				hop.sentDataTags.add(CircuitNodeImpl.sendmeTag(state.getForwardDigestBytes()));
+			}
+		}
 		for(int i = index; i >= 0; i--) {
 			hops.get(i).state.encryptForwardCell(cell);
 		}

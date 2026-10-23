@@ -83,6 +83,11 @@ public class CircuitNodeCryptoState {
 		return forwardDigest.getDigestBytes();
 	}
 
+	/** The running digest of the cells received from this hop. */
+	byte[] getBackwardDigestBytes() {
+		return backwardDigest.getDigestBytes();
+	}
+
 	private boolean isRecognizedCell(Cell cell) {
 		if(cell.getShortAt(RelayCell.RECOGNIZED_OFFSET) != 0)
 			return false;

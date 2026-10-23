@@ -210,10 +210,9 @@ public class CircuitIO implements DashboardRenderable {
     /* Runs in the context of the connection cell reading thread */
     private void processRelayDataCell(RelayCell cell) {
         if(cell.getRelayCommand() == RelayCell.RELAY_DATA) {
-            cell.getCircuitNode().decrementDeliverWindow();
-            if(cell.getCircuitNode().considerSendingSendme()) {
-                final RelayCell sendme = createRelayCell(RelayCell.RELAY_SENDME, 0, cell.getCircuitNode());
-                sendRelayCellTo(sendme, sendme.getCircuitNode());
+            final byte[] sendmeTag = dataCellReceived(cell.getCircuitNode());
+            if(sendmeTag != null) {
+                sendRelayCellTo(createSendme(cell.getCircuitNode(), sendmeTag), cell.getCircuitNode());
             }
         }
 
@@ -231,29 +230,69 @@ public class CircuitIO implements DashboardRenderable {
         }
     }
 
+    private byte[] dataCellReceived(CircuitNode node) {
+        try {
+            return node.dataCellReceived();
+        } catch (TorException e) {
+            destroyCircuit("protocol error: "+ e.getMessage());
+            throw e;
+        }
+    }
+
+    /*
+     * A circuit level SENDME of version 1 (authenticated): VERSION (1 byte),
+     * DATA_LEN (2 bytes), DATA (the tag).  See tor-spec, "Flow control".
+     */
+    private RelayCell createSendme(CircuitNode node, byte[] tag) {
+        final RelayCell sendme = createRelayCell(RelayCell.RELAY_SENDME, 0, node);
+        sendme.putByte(CircuitNodeImpl.SENDME_VERSION_AUTHENTICATED);
+        sendme.putShort(tag.length);
+        sendme.putByteArray(tag);
+        return sendme;
+    }
+
     RelayCell createRelayCell(int relayCommand, int streamId, CircuitNode targetNode) {
         return new RelayCellImpl(targetNode, circuitId, streamId, relayCommand);
     }
 
+    /*
+     * The circuit's packaging window is taken while relaySendLock is held,
+     * so that DATA cells reach the relay in the order in which they took
+     * the window, as the digests remembered for authenticated SENDMEs
+     * require.  The wait for the window to open happens without the lock:
+     * the cell reading thread needs the lock to send our own SENDMEs, and
+     * it must keep reading to receive the SENDMEs that open the window.
+     */
     void sendRelayCellTo(RelayCell cell, CircuitNode targetNode) {
-        relaySendLock.lock();
-        try {
-            logRelayCell("Sending:     ", cell);
-            cell.setLength();
-            targetNode.updateForwardDigest(cell);
-            cell.setDigest(targetNode.getForwardDigestBytes());
+        final boolean isData = cell.getRelayCommand() == RelayCell.RELAY_DATA;
+        while(true) {
+            if(isData) {
+                targetNode.waitForSendWindow();
+            }
+            relaySendLock.lock();
+            try {
+                final int sendWindow = isData ? targetNode.takeSendWindow() : 0;
+                if(isData && sendWindow == 0) {
+                    // another thread took the window first
+                    continue;
+                }
+                logRelayCell("Sending:     ", cell);
+                cell.setLength();
+                targetNode.updateForwardDigest(cell);
+                cell.setDigest(targetNode.getForwardDigestBytes());
+                if(isData) {
+                    targetNode.dataCellSent(sendWindow);
+                }
 
-            for(CircuitNode node = targetNode; node != null; node = node.getPreviousNode()){
+                for(CircuitNode node = targetNode; node != null; node = node.getPreviousNode()){
                     node.encryptForwardCell(cell);
-            }
+                }
 
-            if(cell.getRelayCommand() == RelayCell.RELAY_DATA){
-                    targetNode.waitForSendWindowAndDecrement();
-            }
-
-            sendCell(cell);
-        } finally {
+                sendCell(cell);
+                return;
+            } finally {
                 relaySendLock.unlock();
+            }
         }
     }
 
@@ -322,8 +361,42 @@ public class CircuitIO implements DashboardRenderable {
         }
     }
 
+    /*
+     * A circuit level SENDME from a relay.  Version 1 SENDMEs carry the tag
+     * of the DATA cell they acknowledge, which must match the one we
+     * remembered when we sent it; version 0 SENDMEs (an empty payload)
+     * carry none.
+     */
     private void processCircuitSendme(RelayCell cell) {
-        cell.getCircuitNode().incrementSendWindow();
+        byte[] tag = null;
+        if(cell.cellBytesRemaining() > 0) {
+            final int version = cell.getByte();
+            if(version == CircuitNodeImpl.SENDME_VERSION_AUTHENTICATED) {
+                if(cell.cellBytesRemaining() < 2) {
+                    rejectSendme(cell, "truncated SENDME");
+                    return;
+                }
+                final int length = cell.getShort();
+                if(length != CircuitNodeImpl.SENDME_TAG_LEN || length > cell.cellBytesRemaining()) {
+                    rejectSendme(cell, "bad SENDME tag length "+ length);
+                    return;
+                }
+                tag = new byte[length];
+                cell.getByteArray(tag);
+            } else if(version != 0) {
+                rejectSendme(cell, "unknown SENDME version "+ version);
+                return;
+            }
+        }
+        if(!cell.getCircuitNode().processSendme(tag)) {
+            rejectSendme(cell, "SENDME does not match a DATA cell we sent");
+        }
+    }
+
+    private void rejectSendme(RelayCell cell, String reason) {
+        logger.warn("Closing circuit "+ circuit +": "+ reason +" from "+ cell.getCircuitNode());
+        sendDestroyCell(Cell.ERROR_PROTOCOL);
+        destroyCircuit("protocol error: "+ reason);
     }
 
     void destroyCircuit() {
