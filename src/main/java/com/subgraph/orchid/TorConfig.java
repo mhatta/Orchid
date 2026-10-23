@@ -120,7 +120,14 @@ public interface TorConfig {
 	 */
 	void addOnionClientAuth(String onionAddress, String base32PrivateKey);
 	
+	/**
+	 * @deprecated Ignored.  Every circuit hop is created with the ntor
+	 * handshake; the TAP handshake is no longer accepted by relays.
+	 */
+	@Deprecated
 	AutoBoolValue getUseNTorHandshake();
+	/** @deprecated Ignored; see {@link #getUseNTorHandshake()}. */
+	@Deprecated
 	void setUseNTorHandshake(AutoBoolValue value);
 	
 	AutoBoolValue getUseMicrodescriptors();

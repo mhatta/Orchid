@@ -4,6 +4,7 @@ import com.subgraph.orchid.CircuitNode;
 import com.subgraph.orchid.RelayCell;
 import com.subgraph.orchid.Router;
 import com.subgraph.orchid.TorException;
+import com.subgraph.orchid.circuits.hs.LinkSpecifier;
 import com.subgraph.orchid.crypto.TorMessageDigest;
 import com.subgraph.orchid.crypto.TorNTorKeyAgreement;
 import com.subgraph.orchid.logging.Logger;
@@ -23,73 +24,44 @@ public class NTorCircuitExtender {
 
     CircuitNode extendTo() {
         final byte[] onion = kex.createOnionSkin();
-        if(finalRouterSupportsExtend2()) {
-            logger.debug("Extending circuit to "+ router.getNickname() + " with NTor inside RELAY_EXTEND2");
-            return extendWithExtend2(onion);
-        } else {
-            logger.debug("Extending circuit to "+ router.getNickname() + " with NTor inside RELAY_EXTEND");
-            return extendWithTunneledExtend(onion);
-        }
-    }
-
-    private CircuitNode extendWithExtend2(byte[] onion) {
+        logger.debug("Extending circuit to "+ router.getNickname() + " with ntor inside RELAY_EXTEND2");
         final RelayCell cell = createExtend2Cell(onion);
         extender.sendRelayCell(cell);
         final RelayCell response = extender.receiveRelayResponse(RelayCell.RELAY_EXTENDED2, router);
         return processExtended2(response);
     }
 
-    private CircuitNode extendWithTunneledExtend(byte[] onion) {
-        final RelayCell cell = createExtendCell(onion, kex.getNtorCreateMagic());
-        extender.sendRelayCell(cell);
-        final RelayCell response = extender.receiveRelayResponse(RelayCell.RELAY_EXTENDED, router);
-        return processExtended(response);
-    }
-
-    private boolean finalRouterSupportsExtend2() {
-        return extender.getFinalRouter().getNTorOnionKey() != null;
-    }
-
-    private RelayCell createExtend2Cell(byte[] ntorOnionskin) {
+    /*
+     * EXTEND2 (tor-spec section 5.1.2): the link specifiers name the target
+     * by its IPv4 address and ORPort, its RSA identity and, when it is
+     * known, its Ed25519 identity, which the extending relay then checks.
+     */
+    RelayCell createExtend2Cell(byte[] ntorOnionskin) {
         final RelayCell cell = extender.createRelayCell(RelayCell.RELAY_EXTEND2);
+        final byte[] ed25519Identity = router.getEd25519Identity();
 
-        cell.putByte(2);
+        cell.putByte((ed25519Identity != null) ? 3 : 2);
 
-        cell.putByte(0);
+        cell.putByte(LinkSpecifier.TYPE_IPV4);
         cell.putByte(6);
         cell.putByteArray(router.getAddress().getAddressDataBytes());
         cell.putShort(router.getOnionPort());
 
-        cell.putByte(2);
+        cell.putByte(LinkSpecifier.TYPE_LEGACY_ID);
         cell.putByte(20);
         cell.putByteArray(router.getIdentityHash().getRawBytes());
 
-        cell.putShort(0x0002);
+        if(ed25519Identity != null) {
+            cell.putByte(LinkSpecifier.TYPE_ED25519_ID);
+            cell.putByte(ed25519Identity.length);
+            cell.putByteArray(ed25519Identity);
+        }
+
+        cell.putShort(CircuitExtender.HANDSHAKE_TYPE_NTOR);
         cell.putShort(ntorOnionskin.length);
         cell.putByteArray(ntorOnionskin);
         return cell;
     }
-
-    private RelayCell createExtendCell(byte[] ntorOnionskin, byte[] ntorMagic) {
-        final RelayCell cell = extender.createRelayCell(RelayCell.RELAY_EXTEND);
-        cell.putByteArray(router.getAddress().getAddressDataBytes());
-        cell.putShort(router.getOnionPort());
-        final int paddingLength = CircuitExtender.TAP_ONIONSKIN_LEN - (ntorOnionskin.length + ntorMagic.length);
-        final byte[] padding = new byte[paddingLength];
-        cell.putByteArray(ntorMagic);
-        cell.putByteArray(ntorOnionskin);
-        cell.putByteArray(padding);
-        cell.putByteArray(router.getIdentityHash().getRawBytes());
-        return cell;
-    }
-
-    private CircuitNode processExtended(RelayCell cell) {
-        byte[] payload = new byte[CircuitExtender.TAP_ONIONSKIN_REPLY_LEN];
-        cell.getByteArray(payload);
-
-        return processPayload(payload);
-    }
-
 
     private CircuitNode processExtended2(RelayCell cell) {
         final int payloadLength = cell.getShort();
@@ -106,7 +78,7 @@ public class NTorCircuitExtender {
         final byte[] keyMaterial = new byte[CircuitNodeCryptoState.KEY_MATERIAL_SIZE];
         final byte[] verifyDigest = new byte[TorMessageDigest.TOR_DIGEST_SIZE];
         if(!kex.deriveKeysFromHandshakeResponse(payload, keyMaterial, verifyDigest)) {
-            return null;
+            throw new TorException("Handshake with "+ router.getNickname() + " failed: bad authentication in RELAY_EXTENDED2");
         }
         return extender.createNewNode(router, keyMaterial, verifyDigest);
     }

@@ -10,57 +10,93 @@ import com.subgraph.orchid.circuits.cells.RelayCellImpl;
 import com.subgraph.orchid.crypto.TorCreateFastKeyAgreement;
 import com.subgraph.orchid.crypto.TorKeyAgreement;
 import com.subgraph.orchid.crypto.TorMessageDigest;
-import com.subgraph.orchid.crypto.TorStreamCipher;
+import com.subgraph.orchid.crypto.TorNTorKeyAgreement;
 import com.subgraph.orchid.logging.Logger;
 
+/**
+ * Builds a circuit hop by hop.
+ *
+ * Every hop is created with the ntor handshake: the first one with a CREATE2
+ * cell, the others with RELAY_EXTEND2.  The TAP handshake (CREATE, EXTEND) is
+ * no longer accepted by relays (proposal 350) and is not implemented.  The
+ * only exception is a first hop whose ntor onion key is not known yet, such
+ * as a fallback directory or a bridge contacted before its descriptor is
+ * available; that hop is created with CREATE_FAST, as Tor does.
+ */
 public class CircuitExtender {
     private static final Logger logger = Logger.getInstance(CircuitExtender.class);
-	
-    private final static int DH_BYTES = 1024 / 8;
-    private final static int PKCS1_OAEP_PADDING_OVERHEAD = 42;
-    private final static int CIPHER_KEY_LEN = TorStreamCipher.KEY_LEN;
-    final static int TAP_ONIONSKIN_LEN = PKCS1_OAEP_PADDING_OVERHEAD + CIPHER_KEY_LEN + DH_BYTES;
-    final static int TAP_ONIONSKIN_REPLY_LEN = DH_BYTES + TorMessageDigest.TOR_DIGEST_SIZE;
+
+    /** The handshake type of ntor in CREATE2 and EXTEND2 cells. */
+    final static int HANDSHAKE_TYPE_NTOR = 0x0002;
 
     private final CircuitImpl circuit;
-    private final boolean ntorEnabled;
 
-    CircuitExtender(CircuitImpl circuit, boolean ntorEnabled) {
+    CircuitExtender(CircuitImpl circuit) {
         this.circuit = circuit;
-        this.ntorEnabled = ntorEnabled;
     }
 
+    /**
+     * Create the first hop of the circuit, over the connection the circuit
+     * is bound to.
+     */
+    CircuitNode createFirstHop(Router targetRouter) {
+        if(targetRouter.getNTorOnionKey() != null) {
+            return createNtorTo(targetRouter);
+        } else {
+            logger.debug("No ntor onion key known for "+ targetRouter + ", creating the first hop with CREATE_FAST");
+            return createFastTo(targetRouter);
+        }
+    }
 
-    CircuitNode createFastTo(Router targetRouter) {
-        logger.debug("Creating 'fast' to "+ targetRouter);
+    private CircuitNode createNtorTo(Router targetRouter) {
+        logger.debug("Creating first hop to "+ targetRouter + " with CREATE2 (ntor)");
+        final TorNTorKeyAgreement kex = new TorNTorKeyAgreement(targetRouter.getIdentityHash(), targetRouter.getNTorOnionKey());
+        final byte[] onionskin = kex.createOnionSkin();
+        final Cell cell = CellImpl.createCell(circuit.getCircuitId(), Cell.CREATE2);
+        cell.putShort(HANDSHAKE_TYPE_NTOR);
+        cell.putShort(onionskin.length);
+        cell.putByteArray(onionskin);
+        circuit.sendCell(cell);
+
+        final Cell response = receiveCreateResponse(Cell.CREATED2, targetRouter);
+        final int length = response.getShort();
+        if(length > response.cellBytesRemaining()) {
+            throw new TorException("Incorrect handshake length in CREATED2 cell from "+ targetRouter);
+        }
+        final byte[] reply = new byte[length];
+        response.getByteArray(reply);
+        return appendFirstHop(targetRouter, kex, reply);
+    }
+
+    private CircuitNode createFastTo(Router targetRouter) {
         final TorCreateFastKeyAgreement kex = new TorCreateFastKeyAgreement();
-        sendCreateFastCell(kex);
-        return receiveAndProcessCreateFastResponse(targetRouter, kex);
-    }
-
-    private void sendCreateFastCell(TorCreateFastKeyAgreement kex) {
         final Cell cell = CellImpl.createCell(circuit.getCircuitId(), Cell.CREATE_FAST);
         cell.putByteArray(kex.createOnionSkin());
         circuit.sendCell(cell);
+
+        final Cell response = receiveCreateResponse(Cell.CREATED_FAST, targetRouter);
+        final byte[] reply = new byte[TorMessageDigest.TOR_DIGEST_SIZE * 2];
+        response.getByteArray(reply);
+        return appendFirstHop(targetRouter, kex, reply);
     }
 
-    private CircuitNode receiveAndProcessCreateFastResponse(Router targetRouter, TorKeyAgreement kex) {
+    private Cell receiveCreateResponse(int expectedCommand, Router targetRouter) {
+        final String expected = (expectedCommand == Cell.CREATED2) ? "CREATED2" : "CREATED_FAST";
         final Cell cell = circuit.receiveControlCellResponse();
         if(cell == null) {
-            throw noResponseException("waiting for CREATE_FAST response from "+ targetRouter);
+            throw noResponseException("waiting for "+ expected + " response from "+ targetRouter);
         }
-
-        return processCreatedFastCell(targetRouter, cell, kex);
+        if(cell.getCommand() != expectedCommand) {
+            throw new TorException("Expecting "+ expected + " from "+ targetRouter + " and received cell command "+ cell.getCommand());
+        }
+        return cell;
     }
 
-    private CircuitNode processCreatedFastCell(Router targetRouter, Cell cell, TorKeyAgreement kex) {
-        final byte[] payload = new byte[TorMessageDigest.TOR_DIGEST_SIZE * 2];
+    private CircuitNode appendFirstHop(Router targetRouter, TorKeyAgreement kex, byte[] reply) {
         final byte[] keyMaterial = new byte[CircuitNodeCryptoState.KEY_MATERIAL_SIZE];
         final byte[] verifyHash = new byte[TorMessageDigest.TOR_DIGEST_SIZE];
-        cell.getByteArray(payload);
-        if(!kex.deriveKeysFromHandshakeResponse(payload, keyMaterial, verifyHash)) {
-            // XXX
-            return null;
+        if(!kex.deriveKeysFromHandshakeResponse(reply, keyMaterial, verifyHash)) {
+            throw new TorException("Handshake with "+ targetRouter + " failed: bad authentication in reply");
         }
         final CircuitNode node = CircuitNodeImpl.createFirstHop(targetRouter, keyMaterial, verifyHash);
         circuit.appendNode(node);
@@ -71,18 +107,11 @@ public class CircuitExtender {
         if(circuit.getCircuitLength() == 0) {
             throw new TorException("Cannot EXTEND an empty circuit");
         }
-
-        if(useNtor(targetRouter)) {
-            final NTorCircuitExtender nce = new NTorCircuitExtender(this, targetRouter);
-            return nce.extendTo();
-        } else {
-            final TapCircuitExtender tce = new TapCircuitExtender(this, targetRouter);
-            return tce.extendTo();
+        if(targetRouter.getNTorOnionKey() == null) {
+            throw new TorException("Cannot extend to "+ targetRouter.getNickname() + ": no ntor onion key known");
         }
-    }
-
-    private boolean useNtor(Router targetRouter) {
-        return ntorEnabled && targetRouter.getNTorOnionKey() != null;
+        final NTorCircuitExtender nce = new NTorCircuitExtender(this, targetRouter);
+        return nce.extendTo();
     }
 
     /*
