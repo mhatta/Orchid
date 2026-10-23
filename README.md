@@ -7,9 +7,11 @@ It was written from the Tor specification documents, which are available [here](
 
 Orchid targets Java 8 bytecode and builds and runs on current JDKs (tested with JDK 21).
 
-Orchid speaks the current Tor protocols: ntor circuit handshakes, microdescriptors
-without legacy TAP keys, and **version 3 onion services** (`.onion` addresses of 56
-characters), implemented from [rend-spec v3](https://spec.torproject.org/rend-spec/)
+Orchid speaks the current Tor protocols: link protocols 4 and 5, ntor circuit
+handshakes (CREATE2 and EXTEND2; the obsolete TAP handshake is not implemented),
+authenticated SENDMEs for circuit flow control ([proposal 289](https://spec.torproject.org/proposals/289-authenticated-sendmes.html)),
+microdescriptors without legacy TAP keys, and **version 3 onion services** (`.onion`
+addresses of 56 characters), implemented from [rend-spec v3](https://spec.torproject.org/rend-spec/)
 including client authorization (restricted discovery).  Version 2 onion services were
 removed from the Tor network in 2021 and are no longer supported.
 
