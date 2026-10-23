@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build & test (JDK ${{ matrix.java }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        java: [ '17', '21' ]
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # build.gradle derives the version from `git describe --tags`
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build and run tests
+        run: ./gradlew build fatJar --no-daemon
+
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports-jdk${{ matrix.java }}
+          path: build/reports/tests/
+
+      - name: Upload jars
+        if: matrix.java == '21'
+        uses: actions/upload-artifact@v4
+        with:
+          name: orchid-jars
+          path: build/libs/*.jar
