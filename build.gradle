@@ -21,7 +21,7 @@ repositories {
 sourceSets {
     main {
         java {
-            srcDirs = ['src/main/java', 'opt']
+            srcDirs = ['src/main/java']
         }
         resources {
             srcDirs = ['src/main/resources']
@@ -36,6 +36,16 @@ sourceSets {
         compileClasspath += main.output
         runtimeClasspath += main.output
     }
+    // Orchid as the transport of an Apache XML-RPC client.  Kept out of the
+    // library: Apache XML-RPC is unmaintained and its client deserializes
+    // Java objects sent by the server (CVE-2019-17570, never fixed).
+    xmlrpc {
+        java {
+            srcDirs = ['src/xmlrpc/java']
+        }
+        compileClasspath += main.output
+        runtimeClasspath += main.output
+    }
     test {
         java {
             srcDirs = ['test']
@@ -46,11 +56,13 @@ sourceSets {
 configurations {
     demoImplementation.extendsFrom implementation
     demoRuntimeOnly.extendsFrom runtimeOnly
+    xmlrpcImplementation.extendsFrom implementation
+    xmlrpcRuntimeOnly.extendsFrom runtimeOnly
 }
 
 dependencies {
-    implementation 'org.apache.xmlrpc:xmlrpc-common:3.1.3'
-    implementation 'org.apache.xmlrpc:xmlrpc-client:3.1.3'
+    xmlrpcImplementation 'org.apache.xmlrpc:xmlrpc-common:3.1.3'
+    xmlrpcImplementation 'org.apache.xmlrpc:xmlrpc-client:3.1.3'
 
     demoImplementation 'commons-io:commons-io:2.18.0'
     demoImplementation 'org.jsoup:jsoup:1.18.3'
@@ -94,6 +106,17 @@ tasks.register('runDemo', JavaExec) {
     description = 'Runs the OrchidDemo example program.'
     classpath = sourceSets.demo.runtimeClasspath
     mainClass = 'com.demo.OrchidDemo'
+}
+
+// Orchid-<version>-xmlrpc.jar: com.subgraph.orchid.xmlrpc, for applications
+// that still use Apache XML-RPC.  Built by "gradle xmlrpcJar"; not part of
+// "gradle build" or of the fat jar.
+tasks.register('xmlrpcJar', Jar) {
+    group = 'build'
+    description = 'Assembles the optional Apache XML-RPC transport (com.subgraph.orchid.xmlrpc).'
+    archiveBaseName = rootProject.name
+    archiveClassifier = 'xmlrpc'
+    from sourceSets.xmlrpc.output
 }
 
 assemble.dependsOn demoJar
