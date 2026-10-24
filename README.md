@@ -31,15 +31,23 @@ Orchid uses [Gradle](https://gradle.org/) (8.x) as its build system.
 gradle build
 ```
 
-will compile, run the unit tests and produce a JAR in the `build/libs` directory.
+will compile, run the unit tests and produce the JARs in the `build/libs` directory:
 
-```
-gradle fatJar
-```
+* `Orchid-<version>.jar`, the library and standalone client.  It has no dependencies.
+* `Orchid-<version>-demo.jar`, the example programs in `src/demo` (`com.demo`), which
+  need commons-io and jsoup.  `gradle runDemo` runs `OrchidDemo`.
 
-will produce a fat JAR (`Orchid-<version>-all.jar`), which contains both classes and dependencies needed to run Orchid as a standalone client.
+`gradle fatJar` produces `Orchid-<version>-all.jar`, a JAR to run Orchid as a standalone
+client with `java -jar`.  (Since the library has no dependencies, it is the same as the plain JAR.)
 
-If you cannot reach Maven Central, drop the dependency jars into `lib/` (see `lib/README`).
+`gradle xmlrpcJar` produces `Orchid-<version>-xmlrpc.jar`, the transport for
+[Apache XML-RPC](https://ws.apache.org/xmlrpc/) clients in `src/xmlrpc`
+(`com.subgraph.orchid.xmlrpc`).  It is no longer part of the library: Apache XML-RPC is
+unmaintained, and its client deserializes Java objects sent by the server
+([CVE-2019-17570](https://nvd.nist.gov/vuln/detail/CVE-2019-17570)), so use it only with
+servers you trust.
+
+If you cannot reach Maven Central, drop the jars needed into `lib/` (see `lib/README`).
 
 The version comes from the git tag (`git describe`): a build of the commit tagged
 `v2.0.0` is version `2.0.0`, and a later commit builds as, for example,
@@ -134,6 +142,22 @@ A typical Orchid run will output something like this:
 ```
 
 There will be a lot of `INFO - CircuitCreationTask - Cannot build circuits because we don't have enough directory information` warnings and pauses during the session.  It is usually OK, be patient.  The first time run will take much longer time than the sessions hereafter.
+
+## Country codes (GeoIP)
+
+Node filters such as `ExcludeNodes` and `ExitNodes` can name countries (`{de}`, `{us}`,
+or `{??}` for relays of unknown country).  Orchid looks up the country of a relay in Tor's
+`geoip` database, which it does not ship.  It uses the first of:
+
+* the file named by `-Dcom.subgraph.orchid.geoipFile=/path/to/geoip`,
+* `data/geoip` in the working directory (`tools/update-geoip.sh` downloads Tor's current one there),
+* the file installed with Tor: `/usr/share/tor/geoip` (on Debian and Ubuntu,
+  `apt install tor-geoipdb`), `/usr/local/share/tor/geoip` or `/opt/homebrew/share/tor/geoip`.
+
+Without it the country of every relay is unknown, and Orchid warns that country entries in
+node filters match no relay; in particular `ExcludeNodes {cc}` then excludes nothing.  Tor
+makes the database from the [IPFire Location database](https://location.ipfire.org/)
+(CC BY-SA 4.0).
 
 ## Directory information
 
