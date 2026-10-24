@@ -2,14 +2,14 @@ plugins {
     id 'java'
 }
 
-// Orchid targets Java 8 bytecode so that it keeps working as a library on
-// older JVMs and on Android; it builds and runs on current JDKs (tested with
-// JDK 21).  The v3 onion service crypto (SHA3/SHAKE, Ed25519) is implemented
-// in pure Java and needs no provider beyond the JDK's AES and SHA-512.
-java {
-    sourceCompatibility = JavaVersion.VERSION_1_8
-    targetCompatibility = JavaVersion.VERSION_1_8
-}
+// Orchid targets Java 8 so that it keeps working as a library on older JVMs
+// and on Android; it builds and runs on current JDKs (tested with JDK 21).
+// The v3 onion service crypto (SHA3/SHAKE, Ed25519) is implemented in pure
+// Java and needs no provider beyond the JDK's AES and SHA-512.
+//
+// "--release 8" (options.release below) compiles against the Java 8 API, not
+// only to Java 8 bytecode, so a call to a method that Java 8 does not have
+// is a compile error rather than a NoSuchMethodError at run time.
 
 repositories {
     // Jars dropped into lib/ take precedence so that the project can be built
@@ -45,6 +45,7 @@ sourceSets {
 }
 
 tasks.withType(JavaCompile).configureEach {
+    options.release = 8
     options.encoding = 'UTF-8'
     options.compilerArgs << '-Xlint:-options'
 }
