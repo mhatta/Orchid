@@ -18,16 +18,6 @@ repositories {
     mavenCentral()
 }
 
-dependencies {
-    implementation 'commons-io:commons-io:2.18.0'
-    implementation 'org.jsoup:jsoup:1.18.3'
-    implementation 'org.apache.xmlrpc:xmlrpc-common:3.1.3'
-    implementation 'org.apache.xmlrpc:xmlrpc-client:3.1.3'
-
-    testImplementation 'junit:junit:4.13.2'
-    testImplementation 'org.easymock:easymock:5.4.0'
-}
-
 sourceSets {
     main {
         java {
@@ -37,11 +27,36 @@ sourceSets {
             srcDirs = ['src/main/resources']
         }
     }
+    // The example programs (com.demo).  They are not part of the library,
+    // and their dependencies are not dependencies of Orchid.
+    demo {
+        java {
+            srcDirs = ['src/demo/java']
+        }
+        compileClasspath += main.output
+        runtimeClasspath += main.output
+    }
     test {
         java {
             srcDirs = ['test']
         }
     }
+}
+
+configurations {
+    demoImplementation.extendsFrom implementation
+    demoRuntimeOnly.extendsFrom runtimeOnly
+}
+
+dependencies {
+    implementation 'org.apache.xmlrpc:xmlrpc-common:3.1.3'
+    implementation 'org.apache.xmlrpc:xmlrpc-client:3.1.3'
+
+    demoImplementation 'commons-io:commons-io:2.18.0'
+    demoImplementation 'org.jsoup:jsoup:1.18.3'
+
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.easymock:easymock:5.4.0'
 }
 
 tasks.withType(JavaCompile).configureEach {
@@ -63,6 +78,25 @@ jar {
         attributes 'Main-Class': 'com.subgraph.orchid.TorClient'
     }
 }
+
+// The demo programs: "gradle runDemo" runs OrchidDemo, and demoJar packs
+// them into Orchid-<version>-demo.jar.
+tasks.register('demoJar', Jar) {
+    group = 'build'
+    description = 'Assembles a jar of the demo programs (com.demo).'
+    archiveBaseName = rootProject.name
+    archiveClassifier = 'demo'
+    from sourceSets.demo.output
+}
+
+tasks.register('runDemo', JavaExec) {
+    group = 'application'
+    description = 'Runs the OrchidDemo example program.'
+    classpath = sourceSets.demo.runtimeClasspath
+    mainClass = 'com.demo.OrchidDemo'
+}
+
+assemble.dependsOn demoJar
 
 // gradle clean fatJar
 tasks.register('fatJar', Jar) {
