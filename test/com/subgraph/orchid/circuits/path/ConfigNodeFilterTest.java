@@ -45,8 +45,8 @@ public class ConfigNodeFilterTest {
 	
 	@Test
 	public void testIsCountryCode() {
-		final List<String> validStrings = Arrays.asList("{CC}", "{xx}");
-		final List<String> invalidStrings = Arrays.asList("US", "{xxx}");
+		final List<String> validStrings = Arrays.asList("{CC}", "{xx}", "{??}");
+		final List<String> invalidStrings = Arrays.asList("US", "{xxx}", "{?}", "{a?}");
 		for(String s: validStrings) { assertTrue(s, ConfigNodeFilter.isCountryCodeString(s)); }
 		for(String s: invalidStrings) { assertFalse(s, ConfigNodeFilter.isCountryCodeString(s)); }
 	}

@@ -8,6 +8,8 @@ import java.util.regex.Pattern;
 import com.subgraph.orchid.Router;
 import com.subgraph.orchid.data.HexDigest;
 import com.subgraph.orchid.data.IPv4Address;
+import com.subgraph.orchid.geoip.CountryCodeService;
+import com.subgraph.orchid.logging.Logger;
 
 /**
  * Implements configuration options:
@@ -16,12 +18,13 @@ import com.subgraph.orchid.data.IPv4Address;
  *
  */
 public class ConfigNodeFilter implements RouterFilter {
+	private static final Logger logger = Logger.getInstance(ConfigNodeFilter.class);
 
 	private final static Pattern NETMASK_PATTERN = Pattern.compile("^(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+)/(\\d+)$");
 	private final static Pattern ADDRESS_BITS_PATTERN = Pattern.compile("^(\\d+\\.\\d+\\.\\d+\\.\\d+)/(\\d+)$");
 	
 	private final static Pattern IDENTITY_PATTERN = Pattern.compile("^[A-Fa-f0-9]{40}$");
-	private final static Pattern COUNTRYCODE_PATTERN = Pattern.compile("^\\{([A-Za-z]{2})\\}$");
+	private final static Pattern COUNTRYCODE_PATTERN = Pattern.compile("^\\{([A-Za-z]{2}|\\?\\?)\\}$");
 	private final static Pattern ROUTERNAME_PATTERN = Pattern.compile("^\\w{1,19}$");
 
 	static class MaskFilter implements RouterFilter {
@@ -158,6 +161,10 @@ public class ConfigNodeFilter implements RouterFilter {
 		final Matcher matcher = COUNTRYCODE_PATTERN.matcher(s);
 		if(!matcher.matches()) {
 			throw new IllegalArgumentException();
+		}
+		final CountryCodeService geoip = CountryCodeService.getInstance();
+		if(!geoip.isAvailable() && !CountryCodeService.UNKNOWN.equals(matcher.group(1))) {
+			logger.warn("Node filter "+ s +" matches no relay: there is no geoip database, so every relay's country is "+ CountryCodeService.UNKNOWN);
 		}
 		return new CountryCodeFilter(matcher.group(1));
 	}

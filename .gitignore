@@ -7,3 +7,7 @@
 *.jar
 !gradle/wrapper/gradle-wrapper.jar
 *.zip
+
+# Tor geoip database fetched by tools/update-geoip.sh
+/data/geoip
+/data/geoip.gz

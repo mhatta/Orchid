@@ -1,3 +1,9 @@
-GeoIP.dat GeoLite Country database downloaded November, 2018 
+Orchid looks for Tor's geoip database (IPv4 address ranges to country codes,
+used for the {cc} entries of node filters) as data/geoip in the working
+directory, among other places; see CountryCodeService.
 
-  http://geolite.maxmind.com/download/geoip/database/GeoLiteCountry/GeoIP.dat.gz
+It is not part of Orchid.  Get it with ../tools/update-geoip.sh, or install
+Tor's (on Debian and Ubuntu: apt install tor-geoipdb).
+
+Tor makes the file from the IPFire Location database
+(https://location.ipfire.org/), which is licensed under CC BY-SA 4.0.

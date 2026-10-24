@@ -1,173 +1,259 @@
 package com.subgraph.orchid.geoip;
 
-import java.io.ByteArrayOutputStream;
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.Charset;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.zip.GZIPInputStream;
 
 import com.subgraph.orchid.data.IPv4Address;
 import com.subgraph.orchid.logging.Logger;
 
+/**
+ * Country codes of IPv4 addresses, for the {cc} entries of node filters
+ * (ExcludeNodes, ExitNodes, ...) and for display.
+ *
+ * The database is Tor's "geoip" file: one "LOW,HIGH,CC" line per address
+ * range, with the addresses as 32 bit integers, made by Tor from the IPFire
+ * Location database (https://location.ipfire.org/, CC BY-SA 4.0).  Orchid
+ * does not ship it; it uses the first of these that exists (a ".gz" file is
+ * read too):
+ *
+ * <ol>
+ * <li>the file named by the system property {@value #GEOIP_FILE_PROPERTY},</li>
+ * <li><code>data/geoip</code> in the working directory (see
+ *     <code>tools/update-geoip.sh</code>),</li>
+ * <li>the file installed with Tor: <code>/usr/share/tor/geoip</code> (the
+ *     tor-geoipdb package of Debian and Ubuntu),
+ *     <code>/usr/local/share/tor/geoip</code> or
+ *     <code>/opt/homebrew/share/tor/geoip</code>,</li>
+ * <li>the classpath resource <code>/com/subgraph/orchid/geoip/geoip</code>,
+ *     for applications that bundle it.</li>
+ * </ol>
+ *
+ * Without a database every address has the country code {@value #UNKNOWN},
+ * as addresses not in the database do.  The database is loaded on first use.
+ */
 public class CountryCodeService {
     private static final Logger logger = Logger.getInstance(CountryCodeService.class);
-    private final static String DATABASE_FILENAME = "GeoIP.dat";
-    private final static int COUNTRY_BEGIN = 16776960;
-    private final static int STANDARD_RECORD_LENGTH = 3;
-    private final static int MAX_RECORD_LENGTH = 4;
-    private final static CountryCodeService DEFAULT_INSTANCE = new CountryCodeService();
+
+    /** System property naming the geoip file to use. */
+    public static final String GEOIP_FILE_PROPERTY = "com.subgraph.orchid.geoipFile";
+
+    /** The country code of addresses that are not in the database. */
+    public static final String UNKNOWN = "??";
+
+    private static final String[] DEFAULT_LOCATIONS = {
+        "data/geoip",
+        "/usr/share/tor/geoip",
+        "/usr/local/share/tor/geoip",
+        "/opt/homebrew/share/tor/geoip",
+    };
+    private static final String RESOURCE = "/com/subgraph/orchid/geoip/geoip";
+
+    private static final Charset ASCII = Charset.forName("US-ASCII");
+
+    private static class Holder {
+        static final CountryCodeService INSTANCE = loadDefault();
+    }
 
     public static CountryCodeService getInstance() {
-        return DEFAULT_INSTANCE;
+        return Holder.INSTANCE;
     }
 
-    private static final String[] COUNTRY_CODES = { "--", "AP", "EU", "AD", "AE",
-            "AF", "AG", "AI", "AL", "AM", "CW", "AO", "AQ", "AR", "AS", "AT",
-            "AU", "AW", "AZ", "BA", "BB", "BD", "BE", "BF", "BG", "BH", "BI",
-            "BJ", "BM", "BN", "BO", "BR", "BS", "BT", "BV", "BW", "BY", "BZ",
-            "CA", "CC", "CD", "CF", "CG", "CH", "CI", "CK", "CL", "CM", "CN",
-            "CO", "CR", "CU", "CV", "CX", "CY", "CZ", "DE", "DJ", "DK", "DM",
-            "DO", "DZ", "EC", "EE", "EG", "EH", "ER", "ES", "ET", "FI", "FJ",
-            "FK", "FM", "FO", "FR", "SX", "GA", "GB", "GD", "GE", "GF", "GH",
-            "GI", "GL", "GM", "GN", "GP", "GQ", "GR", "GS", "GT", "GU", "GW",
-            "GY", "HK", "HM", "HN", "HR", "HT", "HU", "ID", "IE", "IL", "IN",
-            "IO", "IQ", "IR", "IS", "IT", "JM", "JO", "JP", "KE", "KG", "KH",
-            "KI", "KM", "KN", "KP", "KR", "KW", "KY", "KZ", "LA", "LB", "LC",
-            "LI", "LK", "LR", "LS", "LT", "LU", "LV", "LY", "MA", "MC", "MD",
-            "MG", "MH", "MK", "ML", "MM", "MN", "MO", "MP", "MQ", "MR", "MS",
-            "MT", "MU", "MV", "MW", "MX", "MY", "MZ", "NA", "NC", "NE", "NF",
-            "NG", "NI", "NL", "NO", "NP", "NR", "NU", "NZ", "OM", "PA", "PE",
-            "PF", "PG", "PH", "PK", "PL", "PM", "PN", "PR", "PS", "PT", "PW",
-            "PY", "QA", "RE", "RO", "RU", "RW", "SA", "SB", "SC", "SD", "SE",
-            "SG", "SH", "SI", "SJ", "SK", "SL", "SM", "SN", "SO", "SR", "ST",
-            "SV", "SY", "SZ", "TC", "TD", "TF", "TG", "TH", "TJ", "TK", "TM",
-            "TN", "TO", "TL", "TR", "TT", "TV", "TW", "TZ", "UA", "UG", "UM",
-            "US", "UY", "UZ", "VA", "VC", "VE", "VG", "VI", "VN", "VU", "WF",
-            "WS", "YE", "YT", "RS", "ZA", "ZM", "ME", "ZW", "A1", "A2", "O1",
-            "AX", "GG", "IM", "JE", "BL", "MF", "BQ", "SS", "O1" };
+    /*
+     * The ranges, sorted and not overlapping: rangeStart[i]..rangeEnd[i]
+     * (unsigned) has the country code codes[codeIndex[i]].
+     */
+    private final int[] rangeStart;
+    private final int[] rangeEnd;
+    private final short[] codeIndex;
+    private final String[] codes;
+    private final String source;
 
-    private final byte[] database;
-
-    public CountryCodeService() {
-        this.database = loadDatabase();
+    private CountryCodeService(int[] rangeStart, int[] rangeEnd, short[] codeIndex, String[] codes, String source) {
+        this.rangeStart = rangeStart;
+        this.rangeEnd = rangeEnd;
+        this.codeIndex = codeIndex;
+        this.codes = codes;
+        this.source = source;
     }
 
-    private static byte[] loadDatabase() {
-        final InputStream input = openDatabaseStream();
-        if(input == null) {
-            logger.warn("Failed to open '"+ DATABASE_FILENAME + "' database file for country code lookups");
+    /** A service without a database: every address is {@value #UNKNOWN}. */
+    static CountryCodeService empty() {
+        return new CountryCodeService(new int[0], new int[0], new short[0], new String[0], null);
+    }
+
+    /**
+     * Whether a database was found.  Without one, country codes in node
+     * filters match no relay.
+     */
+    public boolean isAvailable() {
+        return source != null;
+    }
+
+    /** Where the database was read from, or null. */
+    public String getSource() {
+        return source;
+    }
+
+    /** The number of address ranges with a known country. */
+    public int getRangeCount() {
+        return rangeStart.length;
+    }
+
+    public String getCountryCodeForAddress(IPv4Address address) {
+        final int ip = address.getAddressData();
+        int lo = 0;
+        int hi = rangeStart.length - 1;
+        while(lo <= hi) {
+            final int mid = (lo + hi) >>> 1;
+            if(compareUnsigned(ip, rangeStart[mid]) < 0) {
+                hi = mid - 1;
+            } else if(compareUnsigned(ip, rangeEnd[mid]) > 0) {
+                lo = mid + 1;
+            } else {
+                return codes[codeIndex[mid]];
+            }
+        }
+        return UNKNOWN;
+    }
+
+    private static int compareUnsigned(int a, int b) {
+        return Integer.compare(a ^ Integer.MIN_VALUE, b ^ Integer.MIN_VALUE);
+    }
+
+    private static CountryCodeService loadDefault() {
+        final String property = System.getProperty(GEOIP_FILE_PROPERTY);
+        if(property != null && !property.isEmpty()) {
+            final CountryCodeService s = tryLoadFile(new File(property));
+            if(s != null) {
+                return s;
+            }
+            logger.warn("Cannot read the geoip file '"+ property +"' named by "+ GEOIP_FILE_PROPERTY);
+        }
+        for(String location: DEFAULT_LOCATIONS) {
+            CountryCodeService s = tryLoadFile(new File(location));
+            if(s == null) {
+                s = tryLoadFile(new File(location + ".gz"));
+            }
+            if(s != null) {
+                return s;
+            }
+        }
+        for(String resource: new String[] { RESOURCE, RESOURCE + ".gz" }) {
+            final InputStream input = CountryCodeService.class.getResourceAsStream(resource);
+            if(input != null) {
+                final CountryCodeService s = tryLoad(input, resource.endsWith(".gz"), "classpath:"+ resource);
+                if(s != null) {
+                    return s;
+                }
+            }
+        }
+        logger.warn("No geoip database found, so the country codes of relays are unknown and "
+                + "{cc} entries in node filters match no relay.  Install Tor's geoip file "
+                + "(e.g. the tor-geoipdb package), run tools/update-geoip.sh, or set "
+                + GEOIP_FILE_PROPERTY);
+        return empty();
+    }
+
+    private static CountryCodeService tryLoadFile(File file) {
+        if(!file.isFile() || !file.canRead()) {
             return null;
         }
         try {
-            return loadEntireStream(input);
+            return tryLoad(new FileInputStream(file), file.getName().endsWith(".gz"), file.getPath());
         } catch (IOException e) {
-            logger.warn("IO error reading database file for country code lookups");
+            return null;
+        }
+    }
+
+    private static CountryCodeService tryLoad(InputStream input, boolean gzip, String source) {
+        try {
+            final CountryCodeService s = load(gzip ? new GZIPInputStream(input) : input, source);
+            logger.debug("Loaded "+ s.getRangeCount() +" geoip ranges from "+ source);
+            return s;
+        } catch (IOException e) {
+            logger.warn("Error reading geoip database "+ source +": "+ e.getMessage());
             return null;
         } finally {
             try {
                 input.close();
-            } catch (IOException e) { 
-                //swallow
+            } catch (IOException e) {
+                // ignore
             }
         }
     }
 
-    private static InputStream openDatabaseStream() {
-        final InputStream input = tryResourceOpen();
-        if(input != null) {
-            return input;
-        } else {
-            return tryFilesystemOpen();
-        }
-    }
-
-    private static InputStream tryFilesystemOpen() {
-        final File dataDir = new File(System.getProperty("user.dir"), "data");
-        final File dbFile = new File(dataDir, DATABASE_FILENAME);
-        if(!dbFile.canRead()) {
-                return null;
-        }
-        try {
-                return new FileInputStream(dbFile);
-        } catch (FileNotFoundException e) {
-                return null;
-        }
-    }
-
-    private static InputStream tryResourceOpen() {
-        return CountryCodeService.class.getResourceAsStream("/data/"+ DATABASE_FILENAME);
-    }
-
-    private static byte[] loadEntireStream(InputStream input) throws IOException {
-        final ByteArrayOutputStream output = new ByteArrayOutputStream(4096);
-        copy(input, output);
-        return output.toByteArray();
-    }
-
-    private static int copy(InputStream input, OutputStream output) throws IOException {
-        final byte[] buffer = new byte[4096];
-        int count = 0;
+    /**
+     * Read a database in Tor's geoip format.  Comments (#) and blank lines
+     * are skipped; the ranges must be in ascending order, as Tor writes them.
+     */
+    static CountryCodeService load(InputStream input, String source) throws IOException {
+        final BufferedReader reader = new BufferedReader(new InputStreamReader(input, ASCII));
+        final List<String> codeList = new ArrayList<String>();
+        final Map<String, Integer> codeIndexes = new HashMap<String, Integer>();
+        int[] start = new int[1 << 16];
+        int[] end = new int[1 << 16];
+        short[] index = new short[1 << 16];
         int n = 0;
-        while((n = input.read(buffer)) != -1) {
-            output.write(buffer, 0, n);
-            count += n;
-        }
-        return count;
-    }
-
-    public String getCountryCodeForAddress(IPv4Address address) {
-        return COUNTRY_CODES[seekCountry(address)];
-    }
-
-    private int seekCountry(IPv4Address address) {
-        if(database == null) {
-            return 0;
-        }
-
-        final byte[] record = new byte[2 * MAX_RECORD_LENGTH];
-        final int[] x = new int[2];
-        final long ip = address.getAddressData() & 0xFFFFFFFFL;
-
-        int offset = 0;
-        for(int depth = 31; depth >= 0; depth--) {
-            loadRecord(offset, record);
-
-            x[0] = unpackRecordValue(record, 0);
-            x[1] = unpackRecordValue(record, 1);
-
-            int xx = ((ip & (1 << depth)) > 0) ? (x[1]) : (x[0]);
-
-            if(xx >= COUNTRY_BEGIN) {
-                final int idx = xx - COUNTRY_BEGIN;
-                if(idx < 0 || idx > COUNTRY_CODES.length) {
-                    logger.warn("Invalid index calculated looking up country code record for ("+ address +") idx = "+ idx);
-                    return 0;
-                } else {
-                    return idx;
-                }
-            } else {
-                offset = xx;
+        long previousEnd = -1;
+        int lineNumber = 0;
+        String line;
+        while((line = reader.readLine()) != null) {
+            lineNumber++;
+            line = line.trim();
+            if(line.isEmpty() || line.charAt(0) == '#') {
+                continue;
             }
-
+            final String[] fields = line.split(",");
+            if(fields.length != 3) {
+                throw new IOException("line "+ lineNumber +": expected LOW,HIGH,CC");
+            }
+            final long low, high;
+            try {
+                low = Long.parseLong(fields[0].trim());
+                high = Long.parseLong(fields[1].trim());
+            } catch (NumberFormatException e) {
+                throw new IOException("line "+ lineNumber +": bad address");
+            }
+            if(low < 0 || high > 0xFFFFFFFFL || low > high || low <= previousEnd) {
+                throw new IOException("line "+ lineNumber +": bad or unordered range");
+            }
+            final String cc = fields[2].trim().toUpperCase(Locale.ROOT);
+            if(cc.length() != 2) {
+                throw new IOException("line "+ lineNumber +": bad country code '"+ cc +"'");
+            }
+            previousEnd = high;
+            if(cc.equals(UNKNOWN)) {
+                continue;
+            }
+            if(n == start.length) {
+                start = Arrays.copyOf(start, n * 2);
+                end = Arrays.copyOf(end, n * 2);
+                index = Arrays.copyOf(index, n * 2);
+            }
+            Integer ci = codeIndexes.get(cc);
+            if(ci == null) {
+                ci = codeList.size();
+                codeList.add(cc);
+                codeIndexes.put(cc, ci);
+            }
+            start[n] = (int) low;
+            end[n] = (int) high;
+            index[n] = (short) ci.intValue();
+            n++;
         }
-        logger.warn("No record found looking up country code record for ("+ address + ")");
-        return 0;
-    }
-
-    private void loadRecord(int offset, byte[] recordBuffer) {
-        final int dbOffset = 2 * STANDARD_RECORD_LENGTH * offset;
-        System.arraycopy(database, dbOffset, recordBuffer, 0, recordBuffer.length);
-    }
-
-    private int unpackRecordValue(byte[] record, int idx) {
-        final int valueOffset = idx * STANDARD_RECORD_LENGTH;
-        int value = 0;
-        for(int i = 0; i < STANDARD_RECORD_LENGTH; i++) {
-            int octet = record[valueOffset + i] & 0xFF;
-            value += (octet << (i * 8));
-        }
-        return value;
+        return new CountryCodeService(Arrays.copyOf(start, n), Arrays.copyOf(end, n), Arrays.copyOf(index, n),
+                codeList.toArray(new String[0]), source);
     }
 }
