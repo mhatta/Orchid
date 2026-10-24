@@ -9,7 +9,6 @@ import javax.crypto.Cipher;
 import javax.net.SocketFactory;
 
 import com.subgraph.orchid.circuits.TorInitializationTracker;
-import com.subgraph.orchid.crypto.PRNGFixes;
 import com.subgraph.orchid.dashboard.Dashboard;
 import com.subgraph.orchid.directory.downloader.DirectoryDownloaderImpl;
 import com.subgraph.orchid.logging.Logger;
@@ -41,9 +40,6 @@ public class TorClient {
     }
 
     public TorClient(DirectoryStore customDirectoryStore) {
-            if(Tor.isAndroidRuntime()) {
-                    PRNGFixes.apply();
-            }
             config = Tor.createConfig();
             directory = Tor.createDirectory(config, customDirectoryStore);
             initializationTracker = Tor.createInitalizationTracker();

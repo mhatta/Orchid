@@ -48,8 +48,6 @@ a release, tag the commit (`git tag -a v2.0.1`) and build it.
 
 You may find prebuilt JARs in [Releases](https://github.com/mhatta/Orchid/releases).
 
-The old Ant build system (`build.xml`) is unmaintained.
-
 ## How to run
 
 To start the Orchid SOCKS5 proxy, perform the following:

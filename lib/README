@@ -1,11 +1,19 @@
-You may put *.jar in this directory if you need to build Orchid offline (== can not access remote gradle repositories).
+Jars put in this directory are used in preference to Maven Central, so that
+Orchid can be built offline (where the Gradle repositories cannot be reached).
+Name them <artifact>-<version>.jar, with the versions in build.gradle.
 
-Needed jars are:
+The library itself has no dependencies.  The tests need:
 
-commons-io
-jsoup
-proguard
-xmlrpc-client
-xmlrpc-common
+  junit-4.13.2.jar, hamcrest-core-1.3.jar
+  easymock-5.4.0.jar, objenesis-3.4.jar
 
-jsr305 might be needed too if you use old JDK.
+the demo programs (src/demo):
+
+  commons-io-2.18.0.jar, jsoup-1.18.3.jar
+
+and the optional XML-RPC transport (src/xmlrpc):
+
+  xmlrpc-common-3.1.3.jar, xmlrpc-client-3.1.3.jar, ws-commons-util-1.0.2.jar
+
+flatDir repositories do not resolve transitive dependencies, which is why
+the dependencies of these jars are listed too.

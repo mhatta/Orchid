@@ -139,21 +139,6 @@ tasks.register('fatJar', Jar) {
     exclude 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA'
 }
 
-//https://gist.github.com/JonasGroeger/7620911
-def getGitSha() {
-    def gitFolder = "$projectDir/.git/"
-    def takeFromHash = 12
-    try {
-        def head = new File(gitFolder + "HEAD").text.split(":") // .git/HEAD
-        def isCommit = head.length == 1 // e5a7c79edabbf7dd39888442df081b1c9d8e88fd
-        if(isCommit) return head[0].trim().take(takeFromHash) // e5a7c79edabb
-        def refHead = new File(gitFolder + head[1].trim()) // .git/refs/heads/master
-        return refHead.text.trim().take(takeFromHash)
-    } catch(all) {
-        return 'unknown'
-    }
-}
-
 /*
  * The version is taken from git and nowhere else.  "git describe" gives the
  * release tag (v2.0.0) for a tagged commit, v2.0.0-3-g1234abcd for the third
@@ -190,25 +175,13 @@ def getReleaseTag() {
 version = getReleaseTag()
 
 processResources {
-    def fileName = rootProject.name + "-" + version + ".jar"
-    def gitSha = getGitSha()
-    def releaseDate = new Date().toString()
     def orchidVersion = version.toString().replaceFirst(/^v/, '')
 
-    // Declared so that the resources are filtered again when the version
+    // Declared so that the resource is filtered again when the version
     // changes, for example after a new tag; otherwise Gradle considers the
-    // task up to date and keeps the old values.
+    // task up to date and keeps the old value.
     inputs.property('orchidVersion', orchidVersion)
-    inputs.property('gitSha', gitSha)
 
-    filesMatching('application.properties') {
-        filter { String line ->
-            if(line =~ /^file\.name=/) return "file.name=$fileName"
-            if(line =~ /^git\.sha=/) return "git.sha=$gitSha"
-            if(line =~ /^release\.date=/) return "release.date=$releaseDate"
-            return line
-        }
-    }
     filesMatching('com/subgraph/orchid/version.properties') {
         filter { String line ->
             if(line =~ /^version=/) return "version=$orchidVersion"
