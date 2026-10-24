@@ -42,11 +42,11 @@ public class ApplicationProperties {
 
     };
     
-    //Import common SSL certificates that are not system defaults
-    private static ExportedCertificate[] ADDITIONAL_SSL_CERTIFICATES = {
-        ExportedCertificate.getInstance("/com/subgraph/orchid/http/ssl/certificates/", "DSTRootCAX3", "der"),
-        ExportedCertificate.getInstance("/com/subgraph/orchid/http/ssl/certificates/", "StartComCertificationAuthority", "der")
-    };
+    /*
+     * Certificates trusted by TorRequest in addition to the platform's trust
+     * store, as resources on the classpath.  None by default.
+     */
+    private static ExportedCertificate[] ADDITIONAL_SSL_CERTIFICATES = {};
     
     public static String getName(){
         return NAME;
