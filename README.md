@@ -47,7 +47,7 @@ unmaintained, and its client deserializes Java objects sent by the server
 ([CVE-2019-17570](https://nvd.nist.gov/vuln/detail/CVE-2019-17570)), so use it only with
 servers you trust.
 
-If you cannot reach Maven Central, drop the jars needed into `lib/` (see `lib/README`).
+If you cannot reach Maven Central, drop the jars needed into `lib/` (see [`lib/README.md`](lib/README.md)).
 
 The version comes from the git tag (`git describe`): a build of the commit tagged
 `v2.0.0` is version `2.0.0`, and a later commit builds as, for example,

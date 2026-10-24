@@ -13,7 +13,7 @@ plugins {
 
 repositories {
     // Jars dropped into lib/ take precedence so that the project can be built
-    // offline (see lib/README).
+    // offline (see lib/README.md).
     flatDir { dirs 'lib' }
     mavenCentral()
 }
@@ -60,15 +60,26 @@ configurations {
     xmlrpcRuntimeOnly.extendsFrom runtimeOnly
 }
 
+/*
+ * The dependencies of these libraries are declared as well, with the
+ * versions their POMs ask for.  From Maven Central this changes nothing, but
+ * a jar taken from lib/ comes without its POM, and Gradle would not know to
+ * put what it needs on the classpath (see lib/README.md).
+ */
 dependencies {
     xmlrpcImplementation 'org.apache.xmlrpc:xmlrpc-common:3.1.3'
     xmlrpcImplementation 'org.apache.xmlrpc:xmlrpc-client:3.1.3'
+    xmlrpcImplementation 'org.apache.ws.commons.util:ws-commons-util:1.0.2'
 
     demoImplementation 'commons-io:commons-io:2.18.0'
     demoImplementation 'org.jsoup:jsoup:1.18.3'
 
     testImplementation 'junit:junit:4.13.2'
+    testRuntimeOnly 'org.hamcrest:hamcrest-core:1.3'
     testImplementation 'org.easymock:easymock:5.4.0'
+    testRuntimeOnly 'org.objenesis:objenesis:3.4'
+    testRuntimeOnly 'net.bytebuddy:byte-buddy:1.14.18'
+    testRuntimeOnly 'org.ow2.asm:asm:9.7'
 }
 
 tasks.withType(JavaCompile).configureEach {
