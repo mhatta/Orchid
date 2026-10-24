@@ -1,4 +1,4 @@
-package com.demo;
+package com.subgraph.orchid;
 
 import static org.junit.Assert.assertEquals;
 

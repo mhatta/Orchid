@@ -1,6 +1,5 @@
 package com.subgraph.orchid;
 
-import com.demo.ApplicationProperties;
 import java.nio.charset.Charset;
 
 import com.subgraph.orchid.circuits.CircuitManagerImpl;

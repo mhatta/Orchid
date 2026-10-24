@@ -1,6 +1,6 @@
 package com.subgraph.orchid.http.ssl;
 
-import com.demo.ApplicationProperties;
+import com.subgraph.orchid.ApplicationProperties;
 import com.subgraph.orchid.logging.Logger;
 import java.io.BufferedInputStream;
 import java.io.InputStream;

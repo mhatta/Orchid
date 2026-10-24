@@ -1,6 +1,6 @@
 package com.subgraph.orchid.logging;
 
-import com.demo.ApplicationProperties;
+import com.subgraph.orchid.ApplicationProperties;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
 

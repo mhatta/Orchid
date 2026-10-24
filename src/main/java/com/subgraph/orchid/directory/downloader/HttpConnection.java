@@ -1,6 +1,6 @@
 package com.subgraph.orchid.directory.downloader;
 
-import com.demo.ApplicationProperties;
+import com.subgraph.orchid.ApplicationProperties;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;

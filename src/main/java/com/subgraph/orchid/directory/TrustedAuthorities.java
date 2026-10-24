@@ -1,6 +1,6 @@
 package com.subgraph.orchid.directory;
 
-import com.demo.ApplicationProperties;
+import com.subgraph.orchid.ApplicationProperties;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;

@@ -1,6 +1,6 @@
 package com.subgraph.orchid.http;
 
-import com.demo.ApplicationProperties;
+import com.subgraph.orchid.ApplicationProperties;
 import com.subgraph.orchid.http.get.TorGetRequest;
 import com.subgraph.orchid.http.post.TorPostRequest;
 import com.subgraph.orchid.http.ssl.EnforceSslCertificates;
