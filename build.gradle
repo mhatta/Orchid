@@ -143,9 +143,11 @@ tasks.register('fatJar', Jar) {
  * The version is taken from git and nowhere else.  "git describe" gives the
  * release tag (v2.0.0) for a tagged commit, v2.0.0-3-g1234abcd for the third
  * commit after it, and appends "-dirty" when tracked files have uncommitted
- * changes, so a build that is not a release cannot pass for one.  It names
- * the jars and is written into com/subgraph/orchid/version.properties, which
- * Orchid reports at runtime (ApplicationProperties#getVersion()).
+ * changes, so a build that is not a release cannot pass for one.  The
+ * version is the tag without its "v": 2.0.0, or 2.0.0-3-g1234abcd.  It names
+ * the jars (Orchid-2.0.0.jar) and is written into
+ * com/subgraph/orchid/version.properties, which Orchid reports at runtime
+ * (ApplicationProperties#getVersion()).
  *
  * Source archives made by git archive, such as the ones GitHub offers for a
  * release, have no .git directory; git fills in .git-archival.txt for them
@@ -172,10 +174,10 @@ def getReleaseTag() {
     return '0.0.0'
 }
 
-version = getReleaseTag()
+version = getReleaseTag().replaceFirst(/^v/, '')
 
 processResources {
-    def orchidVersion = version.toString().replaceFirst(/^v/, '')
+    def orchidVersion = version.toString()
 
     // Declared so that the resource is filtered again when the version
     // changes, for example after a new tag; otherwise Gradle considers the
