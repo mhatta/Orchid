@@ -93,7 +93,7 @@ public class HSV3DescriptorDownloader {
 	}
 
 	private Stream openHSDirectoryStream(Router directory) throws TimeoutException, InterruptedException, OpenFailedException {
-		final InternalCircuit circuit = circuitManager.getCleanInternalCircuit();
+		final InternalCircuit circuit = circuitManager.getCleanInternalCircuit(HiddenServiceManager.INTERNAL_CIRCUIT_WAIT_MS);
 		try {
 			final DirectoryCircuit dc = circuit.cannibalizeToDirectory(directory);
 			return dc.openDirectoryStream(DIRECTORY_STREAM_TIMEOUT, true);

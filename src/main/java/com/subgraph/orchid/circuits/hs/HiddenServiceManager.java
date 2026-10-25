@@ -26,6 +26,12 @@ public class HiddenServiceManager {
     private static final Logger logger = Logger.getInstance(HiddenServiceManager.class);
     private final static int RENDEZVOUS_RETRY_COUNT = 5;
     private final static int HS_STREAM_TIMEOUT = 20000;
+    /*
+     * How long onion service code waits for a clean internal circuit before
+     * giving up (it used to wait for ever).  Twice the default circuit build
+     * timeout.
+     */
+    final static long INTERNAL_CIRCUIT_WAIT_MS = 2 * 60 * 1000;
 
     private final Map<String, HiddenService> hiddenServices;
     private final TorConfig config;
@@ -75,17 +81,25 @@ public class HiddenServiceManager {
         circuit.markForClose();
     }
 
-    private synchronized HiddenServiceCircuit getCircuitTo(HiddenService hs) throws OpenFailedException {
-        final HiddenServiceCircuit existing = hs.getCircuit();
-        if(existing != null) {
-            return existing;
+    /*
+     * Locks only this service: opening a rendezvous circuit takes up to
+     * several minutes (descriptor download and up to RENDEZVOUS_RETRY_COUNT
+     * attempts), and with one lock for the whole manager a single onion that
+     * does not answer held up the streams to every other onion service.
+     */
+    private HiddenServiceCircuit getCircuitTo(HiddenService hs) throws OpenFailedException, InterruptedException {
+        synchronized(hs.getConnectLock()) {
+            final HiddenServiceCircuit existing = hs.getCircuit();
+            if(existing != null) {
+                return existing;
+            }
+            final HiddenServiceCircuit c = openCircuitTo(hs);
+            if(c == null) {
+                throw new OpenFailedException("Failed to open circuit to "+ hs.getOnionAddressForLogging());
+            }
+            hs.setCircuit(c);
+            return c;
         }
-        final HiddenServiceCircuit c = openCircuitTo(hs);
-        if(c == null) {
-            throw new OpenFailedException("Failed to open circuit to "+ hs.getOnionAddressForLogging());
-        }
-        hs.setCircuit(c);
-        return c;
     }
 
     private HiddenServiceCircuit openCircuitTo(HiddenService hs) throws OpenFailedException {

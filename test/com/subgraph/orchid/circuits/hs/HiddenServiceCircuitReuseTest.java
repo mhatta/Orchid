@@ -10,13 +10,19 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import java.util.Arrays;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
+import org.easymock.IAnswer;
 import org.junit.Test;
 
 import com.subgraph.orchid.ConnectionCache;
+import com.subgraph.orchid.ConsensusDocument;
 import com.subgraph.orchid.Directory;
 import com.subgraph.orchid.HiddenServiceCircuit;
 import com.subgraph.orchid.OpenFailedException;
+import com.subgraph.orchid.Stream;
 import com.subgraph.orchid.StreamConnectFailedException;
 import com.subgraph.orchid.TorConfig;
 import com.subgraph.orchid.circuits.CircuitManagerImpl;
@@ -25,7 +31,7 @@ import com.subgraph.orchid.directory.downloader.DirectoryDownloaderImpl;
 
 /**
  * How HiddenServiceManager keeps and replaces the rendezvous circuit of a
- * service.
+ * service, and that services do not wait for each other.
  */
 public class HiddenServiceCircuitReuseTest {
 	/* Two valid v3 addresses: the ed25519 base point and a multiple of it. */
@@ -138,5 +144,65 @@ public class HiddenServiceCircuitReuseTest {
 			assertTrue(e.getMessage(), e.getMessage().startsWith("Failed to open stream"));
 		}
 		assertSame(live, hs.getCircuit());
+	}
+
+	@Test(timeout = 20000)
+	public void testSlowServiceDoesNotHoldUpOthers() throws Exception {
+		// Opening a circuit to A blocks (here: inside the consensus lookup) for 4 seconds.
+		final CountDownLatch insideA = new CountDownLatch(1);
+		final Directory directory = createNiceMock(Directory.class);
+		expect(directory.getCurrentConsensusDocument()).andStubAnswer(new IAnswer<ConsensusDocument>() {
+			public ConsensusDocument answer() throws Throwable {
+				insideA.countDown();
+				Thread.sleep(4000);
+				return null;
+			}
+		});
+		replay(directory);
+		final HiddenServiceManager m = manager(directory);
+
+		// B already has a circuit.
+		final Stream streamToB = createNiceMock(Stream.class);
+		replay(streamToB);
+		final HiddenServiceCircuit circuitToB = createNiceMock(HiddenServiceCircuit.class);
+		expect(circuitToB.isConnected()).andStubReturn(true);
+		expect(circuitToB.openStream(443, 20000)).andStubReturn(streamToB);
+		replay(circuitToB);
+		m.getHiddenServiceForOnion(ONION_B).setCircuit(circuitToB);
+
+		final Thread a = new Thread(new Runnable() {
+			public void run() {
+				try {
+					m.getStreamTo(ONION_A, 80);
+				} catch(Exception expected) {
+					// no consensus
+				}
+			}
+		});
+		a.setDaemon(true);
+		a.start();
+		assertTrue(insideA.await(5, TimeUnit.SECONDS));
+
+		final long start = System.nanoTime();
+		assertSame(streamToB, m.getStreamTo(ONION_B, 443));
+		final long waited = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+		assertTrue("stream to B waited "+ waited +" ms for A", waited < 1000);
+	}
+
+	@Test(timeout = 20000)
+	public void testWaitForInternalCircuitIsBounded() throws Exception {
+		final TorConfig config = new TorConfigImpl();
+		final Directory d = directoryWithoutConsensus();
+		final ConnectionCache cc = createNiceMock(ConnectionCache.class);
+		replay(cc);
+		final CircuitManagerImpl cm = new CircuitManagerImpl(config, new DirectoryDownloaderImpl(config, null), d, cc, null);
+		final long start = System.nanoTime();
+		try {
+			cm.getCleanInternalCircuit(300);
+			fail("expected TimeoutException");
+		} catch(TimeoutException expected) {
+			final long waited = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+			assertTrue("waited "+ waited +" ms", waited >= 250 && waited < 5000);
+		}
 	}
 }

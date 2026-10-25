@@ -19,6 +19,7 @@ public class HiddenService {
 	private byte[] subcredential;
 	private HSV3Descriptor descriptor;
 	private HiddenServiceCircuit circuit;
+	private final Object connectLock = new Object();
 
 	HiddenService(TorConfig config, HSV3Address address) {
 		this.config = config;
@@ -118,6 +119,15 @@ public class HiddenService {
 		if(circuit == dead) {
 			circuit = null;
 		}
+	}
+
+	/**
+	 * Held while a rendezvous circuit to this service is being opened, so that
+	 * concurrent streams to the same service share one attempt.  Streams to
+	 * other services are not held up (each service has its own lock).
+	 */
+	Object getConnectLock() {
+		return connectLock;
 	}
 
 	synchronized void setCircuit(HiddenServiceCircuit circuit) {

@@ -362,6 +362,32 @@ public class CircuitManagerImpl implements CircuitManager, DashboardRenderable {
 		}
 	}
 
+	/**
+	 * Like {@link #getCleanInternalCircuit()}, but gives up after
+	 * <code>timeoutMillis</code>: when no internal circuit can be built (no
+	 * network, no usable relays), a caller would otherwise wait for ever.
+	 *
+	 * @throws TimeoutException if no clean internal circuit became available in time.
+	 */
+	public InternalCircuit getCleanInternalCircuit(long timeoutMillis) throws InterruptedException, TimeoutException {
+		final long deadline = System.currentTimeMillis() + timeoutMillis;
+		synchronized(cleanInternalCircuits) {
+			try {
+				requestedInternalCircuitCount += 1;
+				while(cleanInternalCircuits.isEmpty()) {
+					final long remaining = deadline - System.currentTimeMillis();
+					if(remaining <= 0) {
+						throw new TimeoutException("No internal circuit available after "+ timeoutMillis +" ms");
+					}
+					cleanInternalCircuits.wait(remaining);
+				}
+				return cleanInternalCircuits.remove();
+			} finally {
+				requestedInternalCircuitCount -= 1;
+			}
+		}
+	}
+
 	int getNeededCleanCircuitCount(boolean isPredicted) {
 		synchronized (cleanInternalCircuits) {
 			final int predictedCount = (isPredicted) ? 2 : 0;

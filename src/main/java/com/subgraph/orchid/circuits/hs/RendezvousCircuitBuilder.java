@@ -1,6 +1,7 @@
 package com.subgraph.orchid.circuits.hs;
 
 import java.util.concurrent.Callable;
+import java.util.concurrent.TimeoutException;
 
 import com.subgraph.orchid.Circuit;
 import com.subgraph.orchid.Directory;
@@ -43,7 +44,7 @@ public class RendezvousCircuitBuilder implements Callable<HiddenServiceCircuit>{
 
         logger.debug("Opening rendezvous circuit for "+ logServiceName());
 
-        final InternalCircuit rendezvous = circuitManager.getCleanInternalCircuit();
+        final InternalCircuit rendezvous = circuitManager.getCleanInternalCircuit(HiddenServiceManager.INTERNAL_CIRCUIT_WAIT_MS);
         logger.debug("Establishing rendezvous for "+ logServiceName());
         final HSV3RendezvousProcessor rp = new HSV3RendezvousProcessor(rendezvous);
         if(!rp.establishRendezvous()) {
@@ -105,10 +106,13 @@ public class RendezvousCircuitBuilder implements Callable<HiddenServiceCircuit>{
             return null;
         }
         try {
-            final InternalCircuit circuit = circuitManager.getCleanInternalCircuit();
+            final InternalCircuit circuit = circuitManager.getCleanInternalCircuit(HiddenServiceManager.INTERNAL_CIRCUIT_WAIT_MS);
             return circuit.cannibalizeToIntroductionPoint(r);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            return null;
+        } catch (TimeoutException e) {
+            logger.debug("No internal circuit for introduction point "+ ip +": "+ e.getMessage());
             return null;
         } catch (TorException e) {
             logger.debug("cannibalizeTo() failed : "+ e.getMessage());
