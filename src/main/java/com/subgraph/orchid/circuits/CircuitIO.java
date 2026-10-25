@@ -176,13 +176,21 @@ public class CircuitIO implements DashboardRenderable {
         final RelayCell relayCell = decryptRelayCell(cell);
         logRelayCell("Dispatching: ", relayCell);
         switch(relayCell.getRelayCommand()) {
+        case RelayCell.RELAY_TRUNCATED:
+            // Any hop may report that the circuit was cut beyond it.
+            relayCellResponseQueue.add(relayCell);
+            break;
         case RelayCell.RELAY_EXTENDED:
         case RelayCell.RELAY_EXTENDED2:
         case RelayCell.RELAY_RESOLVED:
-        case RelayCell.RELAY_TRUNCATED:
         case RelayCell.RELAY_COMMAND_RENDEZVOUS_ESTABLISHED:
         case RelayCell.RELAY_COMMAND_INTRODUCE_ACK:
         case RelayCell.RELAY_COMMAND_RENDEZVOUS2:
+            // Replies to a request sent to the last hop of the circuit.
+            if(!isFromFinalNode(relayCell)) {
+                rejectCell(relayCell, "reply cell "+ RelayCellImpl.commandToDescription(relayCell.getRelayCommand()) +" from a hop that is not the last one");
+                return;
+            }
             relayCellResponseQueue.add(relayCell);
             break;	
         case RelayCell.RELAY_DATA:
@@ -207,8 +215,26 @@ public class CircuitIO implements DashboardRenderable {
         }
     }
 
-    /* Runs in the context of the connection cell reading thread */
+    /*
+     * Runs in the context of the connection cell reading thread.
+     *
+     * Stream cells (DATA, END, CONNECTED, stream level SENDME) are accepted
+     * only from the hop the stream was opened to, the last hop of the
+     * circuit.  The crypto layers do not stop the guard or a middle relay
+     * from producing a cell that is "recognized" at its own layer, so
+     * without this check those relays could inject data into an exit stream
+     * or close it (compare TROVE-2021-003 in Tor).  Tor treats such a cell
+     * as a protocol violation and closes the circuit; so does Orchid.
+     */
     private void processRelayDataCell(RelayCell cell) {
+        final StreamImpl stream = getStream(cell.getStreamId());
+        // A stream that is no longer tracked was opened to the last hop as well.
+        final CircuitNode expectedSource = (stream != null) ? stream.getTargetNode() : finalNodeOrNull();
+        if(cell.getCircuitNode() != expectedSource) {
+            rejectCell(cell, "stream cell "+ RelayCellImpl.commandToDescription(cell.getRelayCommand()) +" from a hop that is not the stream's");
+            return;
+        }
+
         if(cell.getRelayCommand() == RelayCell.RELAY_DATA) {
             final byte[] sendmeTag = dataCellReceived(cell.getCircuitNode());
             if(sendmeTag != null) {
@@ -216,18 +242,36 @@ public class CircuitIO implements DashboardRenderable {
             }
         }
 
+        // It's not unusual for the stream to not be found.  For example, if a RELAY_CONNECTED arrives after
+        // the client has stopped waiting for it, the stream will never be tracked and eventually the edge node
+        // will send a RELAY_END for this stream.
+        if(stream != null) {
+            streamLock.lock();
+            try {
+                stream.addInputCell(cell);
+            } finally {
+                streamLock.unlock();
+            }
+        }
+    }
+
+    private StreamImpl getStream(int streamId) {
         streamLock.lock();
         try {
-            final StreamImpl stream = streamMap.get(cell.getStreamId());
-            // It's not unusual for the stream to not be found.  For example, if a RELAY_CONNECTED arrives after
-            // the client has stopped waiting for it, the stream will never be tracked and eventually the edge node
-            // will send a RELAY_END for this stream.
-            if(stream != null) {
-                stream.addInputCell(cell);
-            }
+            return streamMap.get(streamId);
         } finally {
             streamLock.unlock();
         }
+    }
+
+    private CircuitNode finalNodeOrNull() {
+        final List<CircuitNode> nodes = circuit.getNodeList();
+        return nodes.isEmpty() ? null : nodes.get(nodes.size() - 1);
+    }
+
+    private boolean isFromFinalNode(RelayCell cell) {
+        final CircuitNode source = cell.getCircuitNode();
+        return source != null && source == finalNodeOrNull();
     }
 
     private byte[] dataCellReceived(CircuitNode node) {
@@ -394,6 +438,11 @@ public class CircuitIO implements DashboardRenderable {
     }
 
     private void rejectSendme(RelayCell cell, String reason) {
+        rejectCell(cell, reason);
+    }
+
+    /* A protocol violation by a relay on the circuit: tear the circuit down. */
+    private void rejectCell(RelayCell cell, String reason) {
         logger.warn("Closing circuit "+ circuit +": "+ reason +" from "+ cell.getCircuitNode());
         sendDestroyCell(Cell.ERROR_PROTOCOL);
         destroyCircuit("protocol error: "+ reason);

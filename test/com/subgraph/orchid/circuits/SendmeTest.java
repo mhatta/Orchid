@@ -102,18 +102,6 @@ public class SendmeTest {
 	}
 
 	@Test(timeout = 20000)
-	public void testSendmesFromMiddleHopAreSeparate() throws InterruptedException {
-		final FakeRelay relay = new FakeRelay(3);
-		CircuitExtenderTest.buildCircuit(relay);
-		receiveData(relay, 1, 100);
-		receiveData(relay, EXIT, 100);
-		relay.drain();
-		assertNull(relay.getFailure());
-		assertEquals(1, circuitSendmes(relay, 1).size());
-		assertEquals(1, circuitSendmes(relay, EXIT).size());
-	}
-
-	@Test(timeout = 20000)
 	public void testSendingBeyondWindowWithAuthenticatedSendmes() throws InterruptedException {
 		final FakeRelay relay = new FakeRelay(3);
 		final CircuitImpl circuit = CircuitExtenderTest.buildCircuit(relay);
