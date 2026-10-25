@@ -27,6 +27,9 @@ public class SSLEngineInputStream extends InputStream {
 	
 	@Override
     public int read(byte b[], int off, int len) throws IOException {
+		if(len == 0) {
+			return 0;
+		}
 		if(!fillRecvBufferIfEmpty()) {
 			return -1;
 		}
@@ -41,17 +44,26 @@ public class SSLEngineInputStream extends InputStream {
 		manager.close();
 	}
 
+	/*
+	 * Make sure recvBuffer holds data and flip it for reading; return false
+	 * at the end of the stream.  recvBuffer is kept in write mode between
+	 * calls (the reads above compact() it after taking from it).
+	 *
+	 * A read of the manager that produces no data is not the end of the
+	 * stream: it used to be taken for one, so that a TLS 1.3 connection
+	 * ended as soon as the server's NewSessionTicket arrived.
+	 */
 	private boolean fillRecvBufferIfEmpty() throws IOException {
 		if(isEOF) {
 			return false;
 		}
-		if(recvBuffer.position() == 0) {
+		while(recvBuffer.position() == 0) {
 			if(manager.read() < 0) {
 				isEOF = true;
 				return false;
 			}
 		}
 		recvBuffer.flip();
-		return recvBuffer.hasRemaining();
+		return true;
 	}
 }

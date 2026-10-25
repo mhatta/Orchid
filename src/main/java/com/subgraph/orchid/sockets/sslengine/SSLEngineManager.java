@@ -112,53 +112,83 @@ public class SSLEngineManager {
 
     }
 
-    // either return -1 or peerApplicationBuffer has data to read
+    /**
+     * Read application data from the peer into peerApplicationBuffer.
+     *
+     * Returns the number of bytes added to peerApplicationBuffer, which is
+     * always more than zero, or -1 at the end of the stream.  It never
+     * returns 0: callers take a read that produced nothing for the end of
+     * the stream.
+     *
+     * TLS records are unwrapped until one of them carries application data.
+     * Records without any are common: TLS 1.3 servers send NewSessionTicket
+     * messages after the handshake, and a KeyUpdate may come at any time.
+     * A record that has only partly arrived (BUFFER_UNDERFLOW) is completed
+     * from the network.  Records already received are unwrapped before the
+     * network is read again, so that data the peer has sent is never left
+     * waiting in peerNetworkBuffer while we block on the socket.
+     */
     int read() throws IOException {
         logger.debug("read()");
         if(!handshakeStarted) {
             startHandshake();
         }
 
-        if(engine.isInboundDone()) {
-            return -1;
+        while(true) {
+            if(engine.isInboundDone()) {
+                return -1;
+            }
+
+            if(peerNetworkBuffer.position() > 0) {
+                final int p = peerApplicationBuffer.position();
+                peerNetworkBuffer.flip();
+                final SSLEngineResult result = engine.unwrap(peerNetworkBuffer, peerApplicationBuffer);
+                peerNetworkBuffer.compact();
+                logResult(result);
+                final int produced = peerApplicationBuffer.position() - p;
+
+                switch(result.getStatus()) {
+                case BUFFER_OVERFLOW:
+                    // peerApplicationBuffer is only read into when it is empty
+                    throw new SSLException("TLS record larger than the application buffer ("+ peerApplicationBuffer.capacity() +" bytes)");
+
+                case CLOSED:
+                    // close_notify from the peer
+                    runHandshake();
+                    return (produced > 0) ? produced : -1;
+
+                case OK:
+                    // Answer whatever the record asked for (a KeyUpdate needs a reply).
+                    runHandshake();
+                    if(produced > 0) {
+                        return produced;
+                    }
+                    if(result.bytesConsumed() > 0) {
+                        // A record without application data: look at the next one.
+                        continue;
+                    }
+                    break;
+
+                case BUFFER_UNDERFLOW:
+                default:
+                    break;
+                }
+            }
+
+            // Not a complete record in peerNetworkBuffer: read more of it.
+            if(!peerNetworkBuffer.hasRemaining()) {
+                throw new SSLException("TLS record larger than the network buffer ("+ peerNetworkBuffer.capacity() +" bytes)");
+            }
+            if(networkReadBuffer(peerNetworkBuffer) < 0) {
+                /*
+                 * The connection was closed without a close_notify.  As
+                 * before, this is reported as the end of the stream (many
+                 * HTTP servers close this way); SSLEngine#closeInbound() is
+                 * not called because it would throw for the truncation.
+                 */
+                return -1;
+            }
         }
-
-        final int n = networkReadBuffer(peerNetworkBuffer);
-        if(n == -1) {
-            return -1;
-        }
-        final int p = peerApplicationBuffer.position();
-
-        peerNetworkBuffer.flip();
-        final SSLEngineResult result = engine.unwrap(peerNetworkBuffer, peerApplicationBuffer);
-        peerNetworkBuffer.compact();
-        logResult(result);
-
-        switch(result.getStatus()) {
-        case BUFFER_OVERFLOW:
-            throw new BufferOverflowException();
-
-        case BUFFER_UNDERFLOW:
-            return 0; // <-- illegal return according to invariant
-
-        case CLOSED:
-            input.close();
-            break;
-        case OK:
-            break;
-        default:
-            break;
-        }
-
-        runHandshake();
-
-        if(n == -1) { // <-- can't happen
-            engine.closeInbound();
-        }
-        if(engine.isInboundDone()) {
-            return -1;
-        }
-        return peerApplicationBuffer.position() - p;
     }
 
     void close() throws IOException {
