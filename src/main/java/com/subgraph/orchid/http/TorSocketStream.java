@@ -48,6 +48,17 @@ public abstract class TorSocketStream extends InputStream {
     }
 
     /**
+     * The value of the Host header: the host, followed by ":port" when the
+     * URL names a port other than <code>defaultPort</code> (RFC 9110 section
+     * 7.2).  Without the port, a server on a non-default port may answer for
+     * the wrong virtual host or reject the request.
+     */
+    protected String getHostHeader(int defaultPort){
+        final int port = getPort(defaultPort);
+        return (port == defaultPort) ? getHost() : getHost() + ":" + port;
+    }
+
+    /**
      * Open a stream through Tor to the URL's host and complete the TLS
      * handshake, checking that the certificate is valid for that host,
      * before anything of the request is sent.  Sets {@link #socket} and

@@ -35,7 +35,7 @@ public class TorSocketHttpsPost extends TorSocketStream {
             final byte[] body = getParams().getBytes(Charset.forName("UTF-8"));
             writeRequest(sslSocket.getOutputStream(),
                     "POST "+getPath()+getQuery()+" HTTP/1.0\r\n" +
-                    "Host: "+getHost()+"\r\n" +
+                    "Host: "+getHostHeader(443)+"\r\n" +
                     "Content-Type: application/x-www-form-urlencoded\r\n" +
                     "Content-Length: "+body.length+"\r\n" +
                     "Connection: close\r\n" +

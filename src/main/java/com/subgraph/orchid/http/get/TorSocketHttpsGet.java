@@ -27,7 +27,7 @@ public class TorSocketHttpsGet extends TorSocketStream {
             inputStream = sslSocket.getInputStream();
             writeRequest(sslSocket.getOutputStream(),
                     "GET "+getPath()+getQuery()+" HTTP/1.0\r\n" +
-                    "Host: "+getHost()+"\r\n" +
+                    "Host: "+getHostHeader(443)+"\r\n" +
                     "Connection: close\r\n" +
                     "\r\n");
             ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();

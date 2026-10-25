@@ -4,7 +4,7 @@ import com.subgraph.orchid.http.NameValuePair;
 import com.subgraph.orchid.http.TorClientFactory;
 import com.subgraph.orchid.http.TorSocketStream;
 import com.subgraph.orchid.TorClient;
-import java.io.PrintWriter;
+import java.nio.charset.Charset;
 import java.util.List;
 
 public class TorSocketHttpPost extends TorSocketStream {
@@ -17,19 +17,25 @@ public class TorSocketHttpPost extends TorSocketStream {
         return new TorSocketHttpPost(url, params);
     }
     
+    /*
+     * Connects to the port in the URL (80 when there is none); up to 2.1.1
+     * this was always 80.  Content-Length counts the bytes of the body, which
+     * is sent without the trailing newline that PrintWriter#println added.
+     */
     @Override
     public void executeRequest() throws Exception{
         TorClient client = TorClientFactory.getTorClient();
-        socket = client.getSocketFactory().createSocket(getHost(), 80);
-        PrintWriter writer = new PrintWriter(socket.getOutputStream(), true);
+        socket = client.getSocketFactory().createSocket(getHost(), getPort(80));
         inputStream = socket.getInputStream();
-        writer.println("POST "+getPath()+getQuery()+" HTTP/1.0");
-        writer.println("Host: "+getHost());
-        writer.println("Content-Type: application/x-www-form-urlencoded");
-        writer.println("Content-Length: "+getParams().length());
-        writer.println("Connection: close");
-        writer.println("");
-        writer.println(getParams());
-        writer.flush();
+        final byte[] body = getParams().getBytes(Charset.forName("UTF-8"));
+        writeRequest(socket.getOutputStream(),
+                "POST "+getPath()+getQuery()+" HTTP/1.0\r\n" +
+                "Host: "+getHostHeader(80)+"\r\n" +
+                "Content-Type: application/x-www-form-urlencoded\r\n" +
+                "Content-Length: "+body.length+"\r\n" +
+                "Connection: close\r\n" +
+                "\r\n");
+        socket.getOutputStream().write(body);
+        socket.getOutputStream().flush();
     }
 }
