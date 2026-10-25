@@ -9,6 +9,13 @@ import com.subgraph.orchid.logging.Logger;
 
 public abstract class SocksRequest {
     private static final Logger logger = Logger.getInstance(SocksRequest.class);
+
+    /*
+     * Upper bound on the NUL terminated strings of a SOCKS 4/4a request
+     * (user id, hostname), so that a client cannot make Orchid buffer an
+     * endless string.  A hostname is at most 255 bytes.
+     */
+    static final int MAX_STRING_LENGTH = 255;
 	
     private final TorConfig config;
     private final Socket socket;
@@ -134,6 +141,9 @@ public abstract class SocksRequest {
                 }
                 if(c == 0){
                     return sb.toString();
+                }
+                if(sb.length() >= MAX_STRING_LENGTH) {
+                    throw new SocksRequestException("SOCKS request string longer than "+ MAX_STRING_LENGTH +" bytes");
                 }
                 char ch = (char) c;
                 sb.append(ch);

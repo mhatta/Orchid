@@ -2,13 +2,13 @@ package com.subgraph.orchid.socks;
 
 import java.io.IOException;
 import java.net.Socket;
+import java.net.SocketException;
 import java.util.concurrent.TimeoutException;
 
 import com.subgraph.orchid.CircuitManager;
 import com.subgraph.orchid.OpenFailedException;
 import com.subgraph.orchid.Stream;
 import com.subgraph.orchid.TorConfig;
-import com.subgraph.orchid.TorException;
 import com.subgraph.orchid.logging.Logger;
 
 public class SocksClientTask implements Runnable {
@@ -26,9 +26,40 @@ public class SocksClientTask implements Runnable {
 
     @Override
     public void run() {
-        final int version = readByte();
-        dispatchRequest(version);
-        closeSocket();
+        try {
+            setNegotiationTimeout();
+            final int version = readByte();
+            dispatchRequest(version);
+        } catch(RuntimeException e) {
+            logger.warn("Unexpected error serving SOCKS client: "+ e);
+        } finally {
+            closeSocket();
+        }
+    }
+
+    /*
+     * A client has SocksTimeout to send its request; a client that connects
+     * and then says nothing would otherwise hold a thread for ever.  The
+     * timeout is lifted once the stream is open (runOpenConnection).
+     */
+    private void setNegotiationTimeout() {
+        final long timeout = config.getSocksTimeout();
+        if(timeout <= 0) {
+            return;
+        }
+        try {
+            socket.setSoTimeout((int) Math.min(timeout, Integer.MAX_VALUE));
+        } catch (SocketException e) {
+            logger.debug("Could not set the SOCKS negotiation timeout: "+ e.getMessage());
+        }
+    }
+
+    private void clearNegotiationTimeout() {
+        try {
+            socket.setSoTimeout(0);
+        } catch (SocketException e) {
+            logger.debug("Could not clear the SOCKS negotiation timeout: "+ e.getMessage());
+        }
     }
 
     private int readByte() {
@@ -97,6 +128,7 @@ public class SocksClientTask implements Runnable {
 
 
     private void runOpenConnection(Stream stream) {
+        clearNegotiationTimeout();
         SocksStreamConnection.runConnection(socket, stream);
     }
 
@@ -110,8 +142,23 @@ public class SocksClientTask implements Runnable {
         }
     }
 
+    /*
+     * Someone pointed a web browser (or another HTTP client) at the SOCKS
+     * port.  Tell them, instead of throwing and leaving the socket open.
+     */
     private void sendHttpPage() {
-        throw new TorException("Returning HTTP page not implemented");
+        final String body = "This is a SOCKS proxy, not an HTTP proxy.\r\n" +
+                "Configure your application to use it as a SOCKS5 proxy.\r\n";
+        final String response = "HTTP/1.0 501 Tor is not an HTTP Proxy\r\n" +
+                "Content-Type: text/plain; charset=us-ascii\r\n" +
+                "Content-Length: "+ body.length() + "\r\n" +
+                "Connection: close\r\n\r\n" + body;
+        try {
+            socket.getOutputStream().write(response.getBytes("US-ASCII"));
+            socket.getOutputStream().flush();
+        } catch (IOException e) {
+            logger.debug("Error sending HTTP response to SOCKS port: "+ e.getMessage());
+        }
     }
 
     private void closeSocket() {

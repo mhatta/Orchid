@@ -33,6 +33,7 @@ public class TorConfigImpl implements TorConfig {
         fascistFirewall = false;
         firewallPorts = toIntList("80,443");
         safeSocks = false;
+        socksListenAddress = "127.0.0.1";
         safeLogging = true;
         warnUnsafeSocks = true;
         clientRejectInternalAddress = true;
@@ -65,6 +66,7 @@ public class TorConfigImpl implements TorConfig {
     private boolean fascistFirewall;
     private List<Integer> firewallPorts;
     private boolean safeSocks;
+    private String socksListenAddress;
     private boolean safeLogging;
     private boolean warnUnsafeSocks;
     private boolean clientRejectInternalAddress;
@@ -308,6 +310,16 @@ public class TorConfigImpl implements TorConfig {
     @Override
     public void setSafeSocks(boolean value) {
         safeSocks = value;
+    }
+
+    @Override
+    public String getSocksListenAddress() {
+        return socksListenAddress;
+    }
+
+    @Override
+    public void setSocksListenAddress(String address) {
+        socksListenAddress = address;
     }
 
     @Override

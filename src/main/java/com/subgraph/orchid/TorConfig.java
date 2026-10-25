@@ -75,6 +75,16 @@ public interface TorConfig {
 	
 	boolean getSafeSocks();
 	void setSafeSocks(boolean value);
+
+	/**
+	 * The local address the SOCKS listener binds to.  The default is the
+	 * loopback address 127.0.0.1, so that only programs on this computer can
+	 * use the proxy.  Set it to another address (for example 0.0.0.0) only
+	 * if other machines are meant to reach it, and protect that address
+	 * with a firewall.
+	 */
+	String getSocksListenAddress();
+	void setSocksListenAddress(String address);
 	
 	boolean getSafeLogging();
 	void setSafeLogging(boolean value);

@@ -64,7 +64,7 @@ To start the Orchid SOCKS5 proxy, perform the following:
 java -jar Orchid-<version>-all.jar
 ```
 
-To test Orchid, you can tell your web browser to use Orchid as a SOCKS5 proxy (the default listening port is `9150`) - however it is important to note that Orchid + your browser is **NOT** a secure replacement for [the Tor Browser Bundle](https://www.torproject.org/projects/torbrowser.htm), which has many other enhancements beyond Tor.
+To test Orchid, you can tell your web browser to use Orchid as a SOCKS5 proxy (the default listening port is `9150`, on the loopback address `127.0.0.1` only; `TorConfig#setSocksListenAddress()` changes the address, but do not expose the port to other hosts unless you mean to run an open proxy) - however it is important to note that Orchid + your browser is **NOT** a secure replacement for [the Tor Browser Bundle](https://www.torproject.org/projects/torbrowser.htm), which has many other enhancements beyond Tor.
 
 For example, with Mozilla Firefox, by default, DNS lookups are not sent over a configured SOCKS5 proxy. You can change this potentially de-anonymizing default configuration by going to the URL `about:config` and setting the property `network.proxy.socks_remote_dns` to `true` (this is already done in the Tor Browser).
 

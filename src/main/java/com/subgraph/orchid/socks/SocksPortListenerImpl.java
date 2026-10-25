@@ -1,6 +1,7 @@
 package com.subgraph.orchid.socks;
 
 import java.io.IOException;
+import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.HashMap;
@@ -9,6 +10,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Semaphore;
 
 import com.subgraph.orchid.CircuitManager;
 import com.subgraph.orchid.SocksPortListener;
@@ -18,6 +20,14 @@ import com.subgraph.orchid.logging.Logger;
 
 public class SocksPortListenerImpl implements SocksPortListener {
     private static final Logger logger = Logger.getInstance(SocksPortListenerImpl.class);
+
+    /*
+     * The most SOCKS clients served at once.  Every client takes a thread
+     * (two more once its stream is open), so without a limit a flood of
+     * connections exhausts the threads and memory of the whole JVM.
+     */
+    static final int MAX_CONCURRENT_CLIENTS = 512;
+    private final Semaphore clientSlots = new Semaphore(MAX_CONCURRENT_CLIENTS);
     private final Set<Integer> listeningPorts = new HashSet<Integer>();
     private final Map<Integer, AcceptTask> acceptThreads = new HashMap<Integer, AcceptTask>();
     private final TorConfig config;
@@ -73,7 +83,53 @@ public class SocksPortListenerImpl implements SocksPortListener {
     }
 
     private Runnable newClientSocket(final Socket s) {
-        return new SocksClientTask(config, s, circuitManager);
+        final Runnable task = new SocksClientTask(config, s, circuitManager);
+        return new Runnable() {
+            public void run() {
+                try {
+                    task.run();
+                } finally {
+                    clientSlots.release();
+                }
+            }
+        };
+    }
+
+    private void acceptClient(Socket s) {
+        if(!clientSlots.tryAcquire()) {
+            logger.warn("Too many SOCKS clients (limit "+ MAX_CONCURRENT_CLIENTS +"), refusing a connection");
+            closeQuietly(s);
+            return;
+        }
+        try {
+            executor.execute(newClientSocket(s));
+        } catch(RuntimeException e) {
+            clientSlots.release();
+            closeQuietly(s);
+            throw e;
+        }
+    }
+
+    private static void closeQuietly(Socket s) {
+        try {
+            s.close();
+        } catch (IOException e) {
+            //swallow
+        }
+    }
+
+    /*
+     * The SOCKS listener binds to the loopback address unless the
+     * configuration names another one.  Binding to every interface, as
+     * Orchid did before, let any host that can reach the port use it as an
+     * open Tor proxy.
+     */
+    private InetAddress getListenAddress() throws IOException {
+        final String address = config.getSocksListenAddress();
+        if(address == null || address.trim().isEmpty()) {
+            return InetAddress.getLoopbackAddress();
+        }
+        return InetAddress.getByName(address.trim());
     }
 
     private class AcceptTask implements Runnable {
@@ -82,7 +138,12 @@ public class SocksPortListenerImpl implements SocksPortListener {
         private volatile boolean stopped;
 
         AcceptTask(int port) throws IOException {
-            this.socket = new ServerSocket(port);
+            final InetAddress address = getListenAddress();
+            this.socket = new ServerSocket(port, 50, address);
+            if(!address.isLoopbackAddress()) {
+                logger.warn("SOCKS listener on port "+ port +" is bound to "+ address.getHostAddress() +
+                        ", not to the loopback address: other hosts that can reach it can use it as a Tor proxy");
+            }
             this.port = port;
         }
 
@@ -113,8 +174,7 @@ public class SocksPortListenerImpl implements SocksPortListener {
 
         private void runAcceptLoop() throws IOException {
             while(!Thread.interrupted() && !stopped) {
-                final Socket s = socket.accept();
-                executor.execute(newClientSocket(s));
+                acceptClient(socket.accept());
             }
         }
     }
