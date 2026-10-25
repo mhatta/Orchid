@@ -43,24 +43,49 @@ public class HiddenServiceManager {
 
     public Stream getStreamTo(String onion, int port) throws OpenFailedException, InterruptedException, TimeoutException {
         final HiddenService hs = getHiddenServiceForOnion(onion);
-        final HiddenServiceCircuit circuit = getCircuitTo(hs);
-
-        try {
-            return circuit.openStream(port, HS_STREAM_TIMEOUT);
-        } catch (StreamConnectFailedException e) {
-            throw new OpenFailedException("Failed to open stream to hidden service "+ hs.getOnionAddressForLogging() + " reason "+ e.getReason());
+        /*
+         * A cached circuit can die between the check in getCircuitTo() and
+         * the stream request.  When the stream fails because the circuit is
+         * gone, forget the circuit and try once more on a new one; any other
+         * failure (the service refused the port, say) is reported as is.
+         */
+        for(int attempt = 0; ; attempt++) {
+            final HiddenServiceCircuit circuit = getCircuitTo(hs);
+            try {
+                return circuit.openStream(port, HS_STREAM_TIMEOUT);
+            } catch (StreamConnectFailedException e) {
+                if(!circuit.isConnected() && attempt == 0) {
+                    discard(hs, circuit);
+                    continue;
+                }
+                throw new OpenFailedException("Failed to open stream to hidden service "+ hs.getOnionAddressForLogging() + " reason "+ e.getReason());
+            } catch (TimeoutException e) {
+                // A circuit on which a stream got no answer is not reused.
+                discard(hs, circuit);
+                if(!circuit.isConnected() && attempt == 0) {
+                    continue;
+                }
+                throw e;
+            }
         }
     }
 
+    private static void discard(HiddenService hs, HiddenServiceCircuit circuit) {
+        hs.discardCircuit(circuit);
+        circuit.markForClose();
+    }
+
     private synchronized HiddenServiceCircuit getCircuitTo(HiddenService hs) throws OpenFailedException {
-        if(hs.getCircuit() == null) {
-            final HiddenServiceCircuit c = openCircuitTo(hs);
-            if(c == null) {
-                throw new OpenFailedException("Failed to open circuit to "+ hs.getOnionAddressForLogging());
-            }
-            hs.setCircuit(c);
+        final HiddenServiceCircuit existing = hs.getCircuit();
+        if(existing != null) {
+            return existing;
         }
-        return hs.getCircuit();
+        final HiddenServiceCircuit c = openCircuitTo(hs);
+        if(c == null) {
+            throw new OpenFailedException("Failed to open circuit to "+ hs.getOnionAddressForLogging());
+        }
+        hs.setCircuit(c);
+        return c;
     }
 
     private HiddenServiceCircuit openCircuitTo(HiddenService hs) throws OpenFailedException {

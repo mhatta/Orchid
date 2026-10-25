@@ -93,11 +93,31 @@ public class HiddenService {
 		this.descriptor = descriptor;
 	}
 
+	/**
+	 * The rendezvous circuit to the service, or null if there is none that
+	 * can still carry streams.
+	 *
+	 * A circuit that has been torn down (a DESTROY from a relay, the link
+	 * closing, or Orchid closing it after a protocol violation) is not
+	 * "marked for close"; checking only isMarkedForClose() kept handing out
+	 * such a dead circuit, and every later stream to the service timed out
+	 * until Orchid was restarted.
+	 */
 	synchronized HiddenServiceCircuit getCircuit() {
-		if(circuit != null && circuit.isMarkedForClose()) {
+		if(circuit != null && (circuit.isMarkedForClose() || !circuit.isConnected())) {
 			circuit = null;
 		}
 		return circuit;
+	}
+
+	/**
+	 * Forget <code>dead</code> if it is still the current circuit, so that the
+	 * next stream opens a new one.
+	 */
+	synchronized void discardCircuit(HiddenServiceCircuit dead) {
+		if(circuit == dead) {
+			circuit = null;
+		}
 	}
 
 	synchronized void setCircuit(HiddenServiceCircuit circuit) {
