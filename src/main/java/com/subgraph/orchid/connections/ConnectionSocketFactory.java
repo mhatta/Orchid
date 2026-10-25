@@ -87,7 +87,13 @@ public class ConnectionSocketFactory {
 	};
 	
 	private static SSLContext createSSLContext() {
-		System.setProperty("sun.security.ssl.allowUnsafeRenegotiation", "true");
+		/*
+		 * Orchid used to set sun.security.ssl.allowUnsafeRenegotiation=true
+		 * here, for the renegotiation based link handshakes of link protocols
+		 * 1 and 2.  Only link protocols 4 and 5 (in-protocol handshake, no
+		 * renegotiation) are spoken now, and the property applied to every TLS
+		 * connection of the JVM Orchid runs in, so it is no longer set.
+		 */
 		try {
 			final SSLContext sslContext = SSLContext.getInstance("TLS");
 			sslContext.init(null, NULL_TRUST, null);
