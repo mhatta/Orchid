@@ -38,7 +38,7 @@ public class AndroidSSLSocketFactory extends SSLSocketFactory {
 	public Socket createSocket(Socket s, String host, int port,
 			boolean autoClose) throws IOException {
 
-		return new SSLEngineSSLSocket(s, sslContext);
+		return new SSLEngineSSLSocket(s, sslContext, host, port);
 	}
 
 	@Override

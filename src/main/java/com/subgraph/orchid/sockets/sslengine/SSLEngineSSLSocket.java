@@ -14,6 +14,7 @@ import javax.net.ssl.HandshakeCompletedEvent;
 import javax.net.ssl.HandshakeCompletedListener;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLEngine;
+import javax.net.ssl.SSLParameters;
 import javax.net.ssl.SSLSession;
 import javax.net.ssl.SSLSocket;
 
@@ -26,16 +27,51 @@ public class SSLEngineSSLSocket extends SSLSocket implements HandshakeCallbackHa
 	private InputStream inputStream;
 	private OutputStream outputStream;
 	private final List<HandshakeCompletedListener> listenerList;
+	/**
+	 * A TLS socket over <code>socket</code> that checks that the server's
+	 * certificate is valid for <code>host</code> (RFC 2818 / RFC 6125, as
+	 * HttpsURLConnection does) and sends <code>host</code> in the SNI
+	 * extension.  Use this constructor: over Tor the exit relay sits between
+	 * the client and the server, so a certificate chain that is merely
+	 * trusted, but issued for another name, must be rejected.
+	 *
+	 * @param host The name of the server, as the application asked for it.
+	 * @param port The server's port.
+	 */
+	public SSLEngineSSLSocket(Socket socket, SSLContext context, String host, int port) throws IOException {
+		this(socket, createSSLEngine(context, host, port));
+	}
+
+	/**
+	 * @deprecated Does not check the server's host name, so any trusted
+	 * certificate is accepted, including one a malicious exit relay obtained
+	 * for a domain of its own.  Use
+	 * {@link #SSLEngineSSLSocket(Socket, SSLContext, String, int)}.
+	 */
+	@Deprecated
 	public SSLEngineSSLSocket(Socket socket, SSLContext context) throws IOException {
-		this.engine = createSSLEngine(context);
+		this(socket, createSSLEngine(context, null, -1));
+	}
+
+	private SSLEngineSSLSocket(Socket socket, SSLEngine engine) throws IOException {
+		this.engine = engine;
 		this.socket = socket;
 		this.manager = new SSLEngineManager(engine, this, socket.getInputStream(), socket.getOutputStream());
 		this.listenerList = new CopyOnWriteArrayList<HandshakeCompletedListener>();
 	}
-	
-	private static SSLEngine createSSLEngine(SSLContext context) {
-		final SSLEngine engine = context.createSSLEngine();
+
+	private static SSLEngine createSSLEngine(SSLContext context, String host, int port) {
+		if(host == null) {
+			final SSLEngine engine = context.createSSLEngine();
+			engine.setUseClientMode(true);
+			return engine;
+		}
+		// The peer host and port also give SNI (for a host name, not an IP literal).
+		final SSLEngine engine = context.createSSLEngine(host, port);
 		engine.setUseClientMode(true);
+		final SSLParameters parameters = engine.getSSLParameters();
+		parameters.setEndpointIdentificationAlgorithm("HTTPS");
+		engine.setSSLParameters(parameters);
 		return engine;
 	}
 

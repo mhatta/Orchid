@@ -1,14 +1,11 @@
 package com.subgraph.orchid.http.post;
 
 import com.subgraph.orchid.http.NameValuePair;
-import com.subgraph.orchid.http.TorClientFactory;
 import com.subgraph.orchid.http.TorSocketStream;
-import com.subgraph.orchid.TorClient;
-import com.subgraph.orchid.sockets.sslengine.SSLEngineSSLSocket;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.PrintWriter;
+import java.nio.charset.Charset;
 import java.util.List;
 import javax.net.ssl.SSLContext;
 
@@ -22,24 +19,30 @@ public class TorSocketHttpsPost extends TorSocketStream {
         return new TorSocketHttpsPost(url, params, sslContext);
     }
     
+    /*
+     * Connects to port 443 (or the URL's port).  Up to 2.1.0 this connected
+     * to port 80 and spoke TLS there, so HTTPS POST requests did not work.
+     */
     @Override
     public void executeRequest() throws Exception{
-        TorClient client = TorClientFactory.getTorClient();
-        socket = client.getSocketFactory().createSocket(getHost(), 80);
-        sslSocket = new SSLEngineSSLSocket(socket, sslContext);
         try{
-            PrintWriter writer = new PrintWriter(sslSocket.getOutputStream(), true);
+            try{
+                openTlsSocket();
+            } catch(IOException e){
+                throw new Exception("TLS certificate check failed. Either add the server certificate with ApplicationProperties.setAdditionalSslCertificates() or, only if you accept that a malicious exit relay can read and modify the connection, configure [TorRequest].setEnforceSslCertificates(false)", e);
+            }
             inputStream = sslSocket.getInputStream();
-            writer.println("POST "+getPath()+getQuery()+" HTTP/1.0");
-            writer.println("Host: "+getHost());
-            writer.println("Content-Type: application/x-www-form-urlencoded");
-            writer.println("Content-Length: "+getParams().length());
-            writer.println("Connection: close");
-            writer.println("");
-            writer.println(getParams());
-            writer.flush();
+            final byte[] body = getParams().getBytes(Charset.forName("UTF-8"));
+            writeRequest(sslSocket.getOutputStream(),
+                    "POST "+getPath()+getQuery()+" HTTP/1.0\r\n" +
+                    "Host: "+getHost()+"\r\n" +
+                    "Content-Type: application/x-www-form-urlencoded\r\n" +
+                    "Content-Length: "+body.length+"\r\n" +
+                    "Connection: close\r\n" +
+                    "\r\n");
+            sslSocket.getOutputStream().write(body);
+            sslSocket.getOutputStream().flush();
             ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-            Thread.sleep(800l);
             int character;
             try{
                 while((character = inputStream.read())!=-1){
@@ -56,12 +59,13 @@ public class TorSocketHttpsPost extends TorSocketStream {
                 }
             }
             inputStream = new ByteArrayInputStream(byteArrayOutputStream.toByteArray());
-            if(!sslSocket.getSession().isValid()){
-                throw new Exception("SSL Session is not valid. Either import the SSL Certificate; configure ApplicationProperties.setEnforceSslCertificates(false); or configure [TorRequest].setEnforceSslCertificates(false);");
-            }
         } finally{
-            sslSocket.close();
-            socket.close();
+            if(sslSocket != null){
+                sslSocket.close();
+            }
+            if(socket != null){
+                socket.close();
+            }
         }
     }
 }

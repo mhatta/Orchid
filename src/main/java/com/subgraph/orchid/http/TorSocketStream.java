@@ -3,6 +3,8 @@ package com.subgraph.orchid.http;
 import com.subgraph.orchid.sockets.sslengine.SSLEngineSSLSocket;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.charset.Charset;
 import java.net.Socket;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -32,6 +34,55 @@ public abstract class TorSocketStream extends InputStream {
     }
 
     public abstract void executeRequest() throws Exception;
+
+    /**
+     * The port given in the URL, or <code>defaultPort</code> if there is none.
+     */
+    protected int getPort(int defaultPort){
+        try{
+            final int port = new URI(url.replace(" ", "%20")).getPort();
+            return (port > 0) ? port : defaultPort;
+        } catch(Exception e){
+            return defaultPort;
+        }
+    }
+
+    /**
+     * Open a stream through Tor to the URL's host and complete the TLS
+     * handshake, checking that the certificate is valid for that host,
+     * before anything of the request is sent.  Sets {@link #socket} and
+     * {@link #sslSocket}.
+     *
+     * @throws IOException if the connection or the handshake fails,
+     *         including when the certificate is not trusted or was issued
+     *         for another name.
+     */
+    protected SSLEngineSSLSocket openTlsSocket() throws IOException {
+        final String host = getHost();
+        if(host == null || host.isEmpty()){
+            throw new IOException("No host name in URL "+ url);
+        }
+        if(sslContext == null){
+            throw new IOException("No TLS context available");
+        }
+        final int port = getPort(443);
+        socket = TorClientFactory.getTorClient().getSocketFactory().createSocket(host, port);
+        sslSocket = new SSLEngineSSLSocket(socket, sslContext, host, port);
+        sslSocket.startHandshake();
+        if(!sslSocket.getSession().isValid()){
+            throw new IOException("TLS session with "+ host +" is not valid");
+        }
+        return sslSocket;
+    }
+
+    /**
+     * Write an HTTP request.  Unlike a PrintWriter, this reports I/O errors
+     * (a failed TLS handshake among them) instead of hiding them.
+     */
+    protected static void writeRequest(OutputStream out, String request) throws IOException {
+        out.write(request.getBytes(Charset.forName("UTF-8")));
+        out.flush();
+    }
     
     protected String getHost(){
         try{

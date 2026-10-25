@@ -5,10 +5,12 @@ import com.subgraph.orchid.http.get.TorGetRequest;
 import com.subgraph.orchid.http.post.TorPostRequest;
 import com.subgraph.orchid.http.ssl.EnforceSslCertificates;
 import com.subgraph.orchid.http.ssl.IgnoreSslCertificates;
+import com.subgraph.orchid.logging.Logger;
 import java.util.List;
 import javax.net.ssl.SSLContext;
 
 public abstract class TorRequest {
+    private static final Logger logger = Logger.getInstance(TorRequest.class);
     protected final String url;
     protected int maxRetryAttempts = 3;
     protected TorSocketStream request;
@@ -62,10 +64,12 @@ public abstract class TorRequest {
         return this;
     }
 
+    @SuppressWarnings("deprecation")
     public SSLContext getSslContext() {
         if(enforceSslCertificates){
             return EnforceSslCertificates.getSSLContext();
         } else{
+            logger.warn("TLS certificate checking is disabled: the Tor exit relay can read and modify this connection");
             return IgnoreSslCertificates.getSSLContext();
         }
     }

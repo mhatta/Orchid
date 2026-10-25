@@ -1,10 +1,6 @@
 package com.subgraph.orchid.http.get;
 
-import com.subgraph.orchid.http.TorClientFactory;
 import com.subgraph.orchid.http.TorSocketStream;
-import com.subgraph.orchid.TorClient;
-import com.subgraph.orchid.sockets.sslengine.SSLEngineSSLSocket;
-import java.io.PrintWriter;
 import javax.net.ssl.SSLContext;
 import java.io.ByteArrayOutputStream;
 import java.io.ByteArrayInputStream;
@@ -22,19 +18,19 @@ public class TorSocketHttpsGet extends TorSocketStream {
     
     @Override
     public void executeRequest() throws Exception {
-        TorClient client = TorClientFactory.getTorClient();
-        socket = client.getSocketFactory().createSocket(getHost(), 443);
-        sslSocket = new SSLEngineSSLSocket(socket, sslContext);
         try{
-            PrintWriter writer = new PrintWriter(sslSocket.getOutputStream(), true);
+            try{
+                openTlsSocket();
+            } catch(IOException e){
+                throw new Exception("TLS certificate check failed. Either add the server certificate with ApplicationProperties.setAdditionalSslCertificates() or, only if you accept that a malicious exit relay can read and modify the connection, configure [TorRequest].setEnforceSslCertificates(false)", e);
+            }
             inputStream = sslSocket.getInputStream();
-            writer.println("GET "+getPath()+getQuery()+" HTTP/1.0");
-            writer.println("Host: "+getHost());
-            writer.println("Connection: close");
-            writer.println("");
-            writer.flush();
+            writeRequest(sslSocket.getOutputStream(),
+                    "GET "+getPath()+getQuery()+" HTTP/1.0\r\n" +
+                    "Host: "+getHost()+"\r\n" +
+                    "Connection: close\r\n" +
+                    "\r\n");
             ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-            Thread.sleep(800l);
             int character;
             try{
                 while((character = inputStream.read())!=-1){
@@ -51,12 +47,13 @@ public class TorSocketHttpsGet extends TorSocketStream {
                 }
             }
             inputStream = new ByteArrayInputStream(byteArrayOutputStream.toByteArray());
-            if(!sslSocket.getSession().isValid()){
-                throw new Exception("SSL Session is not valid. Either import the SSL Certificate; configure ApplicationProperties.setEnforceSslCertificates(false); or configure [TorRequest].setEnforceSslCertificates(false);");
-            }
         } finally{
-            sslSocket.close();
-            socket.close();
+            if(sslSocket != null){
+                sslSocket.close();
+            }
+            if(socket != null){
+                socket.close();
+            }
         }
     }
 }
