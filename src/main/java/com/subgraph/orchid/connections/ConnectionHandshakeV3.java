@@ -21,7 +21,7 @@ import com.subgraph.orchid.ConnectionIOException;
 
 public class ConnectionHandshakeV3 extends ConnectionHandshake {
 
-    private X509Certificate linkCertificate, identityCertificate, signing, tls, cross;
+    private X509Certificate linkCertificate, identityCertificate;
 	
 	ConnectionHandshakeV3(ConnectionImpl connection, SSLSocket socket) {
 		super(connection, socket);
@@ -37,35 +37,102 @@ public class ConnectionHandshakeV3 extends ConnectionHandshake {
 	}
 	
 	void recvCerts() throws ConnectionHandshakeException  {
-		final Cell cell = expectCell(Cell.CERTS);
+		final CertsCell certs = parseCertsCell(expectCell(Cell.CERTS));
+		linkCertificate = certs.linkCertificate;
+		identityCertificate = certs.identityCertificate;
+	}
+
+	/** CERT_TYPE values of the CERTS cell (cert-spec, "Certificate types"). */
+	static final int CERT_TYPE_LINK = 1;
+	static final int CERT_TYPE_RSA_IDENTITY = 2;
+	static final int CERT_TYPE_ED25519_SIGNING = 4;
+	static final int CERT_TYPE_ED25519_TLS_LINK = 5;
+	static final int CERT_TYPE_RSA_ED25519_CROSSCERT = 7;
+
+	/**
+	 * The certificates of a CERTS cell.  Types 1 and 2 are X.509 and are
+	 * parsed; types 4, 5 (Ed25519 certificates) and 7 (RSA to Ed25519 cross
+	 * certificate) use Tor's own formats and are kept as they were received.
+	 */
+	static final class CertsCell {
+		X509Certificate linkCertificate;
+		X509Certificate identityCertificate;
+		byte[] ed25519SigningCertificate;
+		byte[] ed25519TlsLinkCertificate;
+		byte[] rsaEd25519CrossCertificate;
+	}
+
+	/**
+	 * Parse a CERTS cell.
+	 *
+	 * Only the X.509 certificates (types 1 and 2) go through the platform's
+	 * CertificateFactory.  Types 4, 5 and 7 are not X.509, and relays send
+	 * them on every connection; feeding them to the X.509 parser relied on
+	 * it failing with a CertificateException, which other providers (such
+	 * as Android's) need not do.  A malformed X.509 certificate or a length
+	 * that runs past the end of the cell is a handshake error, not a null
+	 * certificate or an unchecked exception later on.
+	 *
+	 * @throws ConnectionHandshakeException if the cell is malformed or lacks
+	 *         the link or identity certificate.
+	 */
+	static CertsCell parseCertsCell(Cell cell) throws ConnectionHandshakeException {
 		final int ncerts = cell.getByte();
 		if(ncerts != 2 && ncerts != 5) {
 			throw new ConnectionHandshakeException("Expecting 2 or 5 certificates and got "+ ncerts);
 		}
-
-		linkCertificate = null;
-		identityCertificate = null;
-		signing = null;
-		tls = null;
-		cross = null;
-		
+		final CertsCell certs = new CertsCell();
+		final java.util.Set<Integer> seen = new java.util.HashSet<Integer>();
 		for(int i = 0; i < ncerts; i++) {
-			int type = cell.getByte();
-			if(type == 1) {
-				linkCertificate = testAndReadCertificate(cell, linkCertificate, "Link (type = 1)");
-			} else if(type == 2) {
-				identityCertificate = testAndReadCertificate(cell, identityCertificate, "Identity (type = 2)");
-			} else if(type == 4) {
-			        signing = testAndReadCertificate(cell, signing, "Ed25519 signing key (type = 4)");
-			} else if(type == 5) {
-			        tls = testAndReadCertificate(cell, tls, "TLS Link certificate (type = 5)");
-			} else if(type == 7) {
-			        cross = testAndReadCertificate(cell, cross, "RSA Identity cross verification (type = 7)");
-			} else {
+			if(cell.cellBytesRemaining() < 3) {
+				throw new ConnectionHandshakeException("Truncated CERTS cell");
+			}
+			final int type = cell.getByte();
+			final int clen = cell.getShort();
+			if(clen > cell.cellBytesRemaining()) {
+				throw new ConnectionHandshakeException("Certificate of type "+ type +" runs past the end of the CERTS cell");
+			}
+			final byte[] body = new byte[clen];
+			cell.getByteArray(body);
+			if(!seen.add(type)) {
+				throw new ConnectionHandshakeException("Duplicate certificates of type "+ type +" in CERTS cell");
+			}
+			switch(type) {
+			case CERT_TYPE_LINK:
+				certs.linkCertificate = parseX509(body, "link (type 1)");
+				break;
+			case CERT_TYPE_RSA_IDENTITY:
+				certs.identityCertificate = parseX509(body, "identity (type 2)");
+				break;
+			case CERT_TYPE_ED25519_SIGNING:
+				certs.ed25519SigningCertificate = body;
+				break;
+			case CERT_TYPE_ED25519_TLS_LINK:
+				certs.ed25519TlsLinkCertificate = body;
+				break;
+			case CERT_TYPE_RSA_ED25519_CROSSCERT:
+				certs.rsaEd25519CrossCertificate = body;
+				break;
+			default:
 				throw new ConnectionHandshakeException("Unexpected certificate type = "+ type + " in CERTS cell");
 			}
 		}
-		
+		if(certs.linkCertificate == null || certs.identityCertificate == null) {
+			throw new ConnectionHandshakeException("CERTS cell lacks the link (type 1) or identity (type 2) certificate");
+		}
+		return certs;
+	}
+
+	private static X509Certificate parseX509(byte[] encoded, String what) throws ConnectionHandshakeException {
+		try {
+			final CertificateFactory certificateFactory = CertificateFactory.getInstance("X.509");
+			return (X509Certificate) certificateFactory.generateCertificate(new ByteArrayInputStream(encoded));
+		} catch (CertificateException e) {
+			throw new ConnectionHandshakeException("Malformed "+ what +" certificate in CERTS cell: "+ e.getMessage());
+		} catch (RuntimeException e) {
+			// Some providers throw unchecked exceptions on malformed input.
+			throw new ConnectionHandshakeException("Malformed "+ what +" certificate in CERTS cell: "+ e);
+		}
 	}
 	
 	RSAPublicKey getConnectionPublicKey() {
@@ -77,28 +144,6 @@ public class ConnectionHandshakeV3 extends ConnectionHandshake {
 	}
 	
 
-	private X509Certificate testAndReadCertificate(Cell cell, X509Certificate currentValue, String type) throws ConnectionHandshakeException {
-		if(currentValue == null) {
-			return readCertificateFromCell(cell);
-		} else {
-			throw new ConnectionHandshakeException("Duplicate "+ type + " certificates in CERTS cell");
-		}
-	}
-	
-	private X509Certificate readCertificateFromCell(Cell cell) {
-		try {
-			final CertificateFactory certificateFactory = CertificateFactory.getInstance("X.509");
-			final int clen = cell.getShort();
-			final byte[] certificateBuffer = new byte[clen];
-			cell.getByteArray(certificateBuffer);
-			final ByteArrayInputStream bis = new ByteArrayInputStream(certificateBuffer);
-			return (X509Certificate) certificateFactory.generateCertificate(bis);
-		} catch (CertificateException e) {
-			return null;
-		}
-		
-	}
-	
 	void verifyCertificates() throws ConnectionHandshakeException {
 		PublicKey publicKey = identityCertificate.getPublicKey();
 		verifyIdentityKey(publicKey);

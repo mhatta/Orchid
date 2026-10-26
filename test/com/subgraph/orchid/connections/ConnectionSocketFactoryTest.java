@@ -77,7 +77,7 @@ public class ConnectionSocketFactoryTest {
 	 * A self-signed 1024 bit RSA certificate, as relays use for their link
 	 * keys, valid until 2126 (PKCS#12 with legacy encryption).
 	 */
-	private final static String RELAY_KEYSTORE_BASE64 =
+	final static String RELAY_KEYSTORE_BASE64 =
 		"MIIGKQIBAzCCBeIGCSqGSIb3DQEHAaCCBdMEggXPMIIFyzCCAx8GCSqGSIb3DQEHAaCCAxAE" +
 		"ggMMMIIDCDCCAwQGCyqGSIb3DQEMCgECoIICszCCAq8wKQYKKoZIhvcNAQwBAzAbBBSIRPxT" +
 		"oY69XVIbTrGdWRyiBCbw0wIDAMNQBIICgG4e7mp/ys5N+L61H5XYClbSTIZG/LSSt+CY667F" +
