@@ -15,59 +15,83 @@ import javax.net.ssl.X509TrustManager;
 import com.subgraph.orchid.TorException;
 
 public class ConnectionSocketFactory {
-    static final String[] V1_CIPHERS_ONLY = {
-	"TLS_DHE_RSA_WITH_AES_256_CBC_SHA",
-	"TLS_DHE_RSA_WITH_AES_128_CBC_SHA",
-	"SSL_DHE_RSA_WITH_3DES_EDE_CBC_SHA",
+    /*
+     * The cipher suites Orchid offers to relays, in order of preference:
+     * TLS 1.3, then TLS 1.2 suites with forward secrecy (ECDHE) and AEAD
+     * encryption, then ECDHE with CBC as a last resort.  Relays have RSA link
+     * keys, so the ECDHE_RSA suites are the ones that matter for TLS 1.2.
+     *
+     * Only the suites that the runtime supports are enabled
+     * (chooseCipherSuites()).  Orchid used to pass a fixed list of 42 names
+     * taken from OpenJDK 11, among them DHE, static ECDH and DSS suites.
+     * Android's TLS provider (Conscrypt / BoringSSL) supports none of those
+     * and rejects the whole list with an IllegalArgumentException when one
+     * name is unknown, so no relay could be reached on Android.  The list
+     * also left out the TLS 1.3 suites, which turned TLS 1.3 off.
+     */
+    static final String[] PREFERRED_CIPHER_SUITES = {
+        // TLS 1.3
+        "TLS_AES_128_GCM_SHA256",
+        "TLS_AES_256_GCM_SHA384",
+        "TLS_CHACHA20_POLY1305_SHA256",
+        // TLS 1.2, ECDHE + AEAD
+        "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
+        "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
+        "TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256",
+        "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
+        "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384",
+        "TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256",
+        // TLS 1.2, ECDHE + CBC
+        "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA",
+        "TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA",
     };
-    
-    private static final String[] MANDATORY_CIPHERS = {
-	// The result of getSupportedCipherSuites() on OpenJDK 11
-	// minus <128bit weak, DH_anon and NULL ciphers
-	// FIXME: blacklisting weak ciphers would be preferable
-	"TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384",
-	"TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
-	"TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
-	"TLS_RSA_WITH_AES_256_GCM_SHA384",
-	"TLS_ECDH_ECDSA_WITH_AES_256_GCM_SHA384",
-	"TLS_ECDH_RSA_WITH_AES_256_GCM_SHA384",
-	"TLS_DHE_RSA_WITH_AES_256_GCM_SHA384",
-	"TLS_DHE_DSS_WITH_AES_256_GCM_SHA384",
-	"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
-	"TLS_RSA_WITH_AES_128_GCM_SHA256",
-	"TLS_ECDH_ECDSA_WITH_AES_128_GCM_SHA256",
-	"TLS_ECDH_RSA_WITH_AES_128_GCM_SHA256",
-	"TLS_DHE_RSA_WITH_AES_128_GCM_SHA256",
-	"TLS_DHE_DSS_WITH_AES_128_GCM_SHA256",
-	"TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA384",
-	"TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384",
-	"TLS_RSA_WITH_AES_256_CBC_SHA256",
-	"TLS_ECDH_ECDSA_WITH_AES_256_CBC_SHA384",
-	"TLS_ECDH_RSA_WITH_AES_256_CBC_SHA384",
-	"TLS_DHE_RSA_WITH_AES_256_CBC_SHA256",
-	"TLS_DHE_DSS_WITH_AES_256_CBC_SHA256",
-	"TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA",
-	"TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA",
-	"TLS_RSA_WITH_AES_256_CBC_SHA",
-	"TLS_ECDH_ECDSA_WITH_AES_256_CBC_SHA",
-	"TLS_ECDH_RSA_WITH_AES_256_CBC_SHA",
-	"TLS_DHE_RSA_WITH_AES_256_CBC_SHA",
-	"TLS_DHE_DSS_WITH_AES_256_CBC_SHA",
-	"TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256",
-	"TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256",
-	"TLS_RSA_WITH_AES_128_CBC_SHA256",
-	"TLS_ECDH_ECDSA_WITH_AES_128_CBC_SHA256",
-	"TLS_ECDH_RSA_WITH_AES_128_CBC_SHA256",
-	"TLS_DHE_RSA_WITH_AES_128_CBC_SHA256",
-	"TLS_DHE_DSS_WITH_AES_128_CBC_SHA256",
-	"TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA",
-	"TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA",
-	"TLS_RSA_WITH_AES_128_CBC_SHA",
-	"TLS_ECDH_ECDSA_WITH_AES_128_CBC_SHA",
-	"TLS_ECDH_RSA_WITH_AES_128_CBC_SHA",
-	"TLS_DHE_RSA_WITH_AES_128_CBC_SHA",
-	"TLS_DHE_DSS_WITH_AES_128_CBC_SHA",
-    };
+
+    /* TLS versions Orchid offers to relays, newest first. */
+    static final String[] PREFERRED_PROTOCOLS = { "TLSv1.3", "TLSv1.2" };
+
+    /**
+     * The entries of <code>preferred</code> that are in <code>supported</code>,
+     * in the order of <code>preferred</code>.
+     */
+    static String[] intersect(String[] preferred, String[] supported) {
+        final java.util.Set<String> available = new java.util.HashSet<String>(java.util.Arrays.asList(supported));
+        final java.util.List<String> result = new java.util.ArrayList<String>();
+        for(String name: preferred) {
+            if(available.contains(name)) {
+                result.add(name);
+            }
+        }
+        return result.toArray(new String[result.size()]);
+    }
+
+    /**
+     * The cipher suites to enable, chosen from the ones the TLS provider
+     * supports.
+     *
+     * @throws TorException if the provider supports none of them.
+     */
+    static String[] chooseCipherSuites(String[] supported) {
+        final String[] suites = intersect(PREFERRED_CIPHER_SUITES, supported);
+        if(suites.length == 0) {
+            throw new TorException("The TLS provider supports none of the cipher suites Orchid uses with relays "
+                    + java.util.Arrays.toString(PREFERRED_CIPHER_SUITES));
+        }
+        return suites;
+    }
+
+    /**
+     * The TLS versions to enable, chosen from the ones the TLS provider
+     * supports.
+     *
+     * @throws TorException if the provider supports neither TLS 1.3 nor 1.2.
+     */
+    static String[] chooseProtocols(String[] supported) {
+        final String[] protocols = intersect(PREFERRED_PROTOCOLS, supported);
+        if(protocols.length == 0) {
+            throw new TorException("The TLS provider supports neither TLS 1.3 nor TLS 1.2");
+        }
+        return protocols;
+    }
 
 	private static final TrustManager[] NULL_TRUST = {
 		new X509TrustManager() {
@@ -106,19 +130,54 @@ public class ConnectionSocketFactory {
 	}
 	
 	private final SSLSocketFactory socketFactory;
+	private final String[] cipherSuites;
+	private final String[] protocols;
 	
 	ConnectionSocketFactory() {
-		socketFactory = createSSLContext().getSocketFactory();
+		this(createSSLContext().getSocketFactory());
+	}
+
+	/* For tests: any SSLSocketFactory, e.g. one that behaves like Conscrypt. */
+	ConnectionSocketFactory(SSLSocketFactory socketFactory) {
+		this.socketFactory = socketFactory;
+		this.cipherSuites = chooseCipherSuites(socketFactory.getSupportedCipherSuites());
+		this.protocols = chooseProtocols(probeSupportedProtocols(socketFactory));
+	}
+
+	/*
+	 * SSLSocketFactory has no getSupportedProtocols(); ask an unconnected
+	 * socket.
+	 */
+	private static String[] probeSupportedProtocols(SSLSocketFactory factory) {
+		try {
+			final SSLSocket probe = (SSLSocket) factory.createSocket();
+			try {
+				return probe.getSupportedProtocols();
+			} finally {
+				probe.close();
+			}
+		} catch (IOException e) {
+			throw new TorException(e);
+		}
 	}
 	
 	SSLSocket createSocket() {
 		try {
 			final SSLSocket socket = (SSLSocket) socketFactory.createSocket();
-			socket.setEnabledCipherSuites(MANDATORY_CIPHERS);
+			socket.setEnabledProtocols(protocols);
+			socket.setEnabledCipherSuites(cipherSuites);
 			socket.setUseClientMode(true);
 			return socket;
 		} catch (IOException e) {
 			throw new TorException(e);
 		}
+	}
+
+	String[] getEnabledCipherSuites() {
+		return cipherSuites.clone();
+	}
+
+	String[] getEnabledProtocols() {
+		return protocols.clone();
 	}
 }
