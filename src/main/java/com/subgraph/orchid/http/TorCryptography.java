@@ -1,57 +1,37 @@
 package com.subgraph.orchid.http;
 
-import com.subgraph.orchid.logging.Logger;
-import java.lang.reflect.Field;
-import java.security.Permission;
-import java.security.PermissionCollection;
-import java.util.Map;
 import javax.crypto.Cipher;
 
+/**
+ * Checks for the "limited strength" cryptography policy of old Oracle
+ * Java releases.
+ *
+ * @deprecated Every supported Java release (8u161 and later, all OpenJDK
+ * builds) and Android allow unlimited key lengths, which Orchid needs
+ * (AES-256 for version 3 onion services).  This class used to lift the
+ * restriction by rewriting private fields of javax.crypto.JceSecurity by
+ * reflection; that is gone, and the class will be removed in a later
+ * release.
+ */
+@Deprecated
 public class TorCryptography {
-    private static final Logger logger = Logger.getInstance(TorCryptography.class);
-    
+
+    /**
+     * Whether the runtime limits AES keys to less than 256 bits.
+     */
     public static boolean hasRestrictedCryptography(){
-	try {
-            if(Cipher.getMaxAllowedKeyLength("AES") < 256) {
-                return true;
-            }
+        try {
+            return Cipher.getMaxAllowedKeyLength("AES") < 256;
         } catch (Exception e) {
             // Assume unrestricted if we can not determine and let Orchid throw an error.
+            return false;
         }
-        return false;
     }
 
-    private static boolean isOracleJRE() {
-        // This simply matches the Oracle JRE, but not OpenJDK.
-        return "Java(TM) SE Runtime Environment".equals(System.getProperty("java.runtime.name"));
-    }
-    
+    /**
+     * Does nothing.  It used to lift the limited strength policy of old
+     * Oracle releases by reflection; update Java instead.
+     */
     public static void removeCryptographyRestrictions() {
-        if(hasRestrictedCryptography() && isOracleJRE()){
-            try {
-                // http://stackoverflow.com/a/22492582
-                final Class<?> jceSecurity = Class.forName("javax.crypto.JceSecurity");
-                final Class<?> cryptoPermissions = Class.forName("javax.crypto.CryptoPermissions");
-                final Class<?> cryptoAllPermission = Class.forName("javax.crypto.CryptoAllPermission");
-
-                final Field isRestrictedField = jceSecurity.getDeclaredField("isRestricted");
-                isRestrictedField.setAccessible(true);
-                isRestrictedField.set(null, false);
-
-                final Field defaultPolicyField = jceSecurity.getDeclaredField("defaultPolicy");
-                defaultPolicyField.setAccessible(true);
-                final PermissionCollection defaultPolicy = (PermissionCollection) defaultPolicyField.get(null);
-
-                final Field perms = cryptoPermissions.getDeclaredField("perms");
-                perms.setAccessible(true);
-                ((Map<?, ?>) perms.get(defaultPolicy)).clear();
-
-                final Field instance = cryptoAllPermission.getDeclaredField("INSTANCE");
-                instance.setAccessible(true);
-                defaultPolicy.add((Permission) instance.get(null));
-            } catch (final Exception e) {
-                logger.error("Unable to bypass JCE Unlimited Strength Jurisdiction policy files.", e);
-            }
-        }
     }
 }

@@ -2,7 +2,6 @@ package com.subgraph.orchid.http;
 
 import com.subgraph.orchid.TorClient;
 import com.subgraph.orchid.TorInitializationListener;
-import java.lang.reflect.Field;
 import java.net.InetSocketAddress;
 import java.net.Proxy;
 import java.security.Permission;
@@ -21,8 +20,6 @@ import com.subgraph.orchid.directory.TrustedAuthorities;
 import com.subgraph.orchid.directory.parsing.DocumentFieldParser;
 import com.subgraph.orchid.directory.parsing.DocumentParsingHandler;
 import com.subgraph.orchid.logging.Logger;
-import java.lang.reflect.Array;
-import java.lang.reflect.Method;
 
 public class TorClientFactory {
     private static final Logger logger = Logger.getInstance(TorClientFactory.class);
@@ -40,46 +37,14 @@ public class TorClientFactory {
         return isStarting || isRunning;
     }
     
+    @SuppressWarnings("deprecation")
     public static void openTunnel(){
         if(!isRunning){
             isStarting = true;
             if(TorCryptography.hasRestrictedCryptography()){
-                TorCryptography.removeCryptographyRestrictions();
+                // Version 3 onion services need AES-256.
+                logger.warn("This Java runtime limits AES keys to less than 256 bits; update Java (8u161 or later)");
             }
-//            
-//            TrustedAuthorities.getInstance().getAuthorityServers().clear();
-//            try{
-//                TrustedAuthorities ta = TrustedAuthorities.getInstance();
-//            Method method = ta.getClass().getDeclaredMethod("initialize");
-//            method.setAccessible(true);
-//Object r = method.invoke(ta);
-//            } catch(Exception e){
-//              System.out.println(e);  
-//            }
-//            List<DirectoryServer> activeAuthority = new ArrayList();
-//            for(DirectoryServer ds: TrustedAuthorities.getInstance().getAuthorityServers()){
-//                System.out.println(ds.getNickname());
-//                if(!ds.getNickname().equals("Tonga") && !ds.getNickname().equals("urras")){
-//                    activeAuthority.add(ds);
-//                }
-//            }
-//            TrustedAuthorities.getInstance().getAuthorityServers().clear();
-//            TrustedAuthorities.getInstance().getAuthorityServers().addAll(activeAuthority);
-//            
-//            
-//            try{
-//                Field f = TrustedAuthorities.class.getDeclaredField("v3ServerCount");
-//                f.setAccessible(true);
-//                int n = 0;
-//                for(DirectoryServer ds: TrustedAuthorities.getInstance().getAuthorityServers()) {
-//                    if(ds.getV3Identity() != null) {
-//                        n += 1;
-//                    }
-//                }
-//                f.set(TrustedAuthorities.getInstance(), n);
-//            } catch(Exception e){
-//                System.out.println(e);
-//            }
             client = new TorClient();
             client.enableSocksListener(PROXY_PORT);
             client.addInitializationListener(createInitalizationListner());
