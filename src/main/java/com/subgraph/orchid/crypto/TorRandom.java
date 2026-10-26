@@ -1,9 +1,6 @@
 package com.subgraph.orchid.crypto;
 
-import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
-
-import com.subgraph.orchid.TorException;
 
 public class TorRandom {
 
@@ -13,12 +10,21 @@ public class TorRandom {
 		random = createRandom();
 	}
 	
+	/*
+	 * The platform's default generator (NativePRNG or DRBG on the JDK,
+	 * Conscrypt's on Android), seeded from the operating system.  Orchid
+	 * asked for "SHA1PRNG" by name before: a legacy algorithm whose
+	 * implementation and seeding differ between providers, and whose flawed
+	 * seeding on early Android releases exposed private keys in other
+	 * applications.
+	 */
 	private static SecureRandom createRandom() {
-		try {
-			return SecureRandom.getInstance("SHA1PRNG");
-		} catch (NoSuchAlgorithmException e) {
-			throw new TorException(e);
-		}
+		return new SecureRandom();
+	}
+
+	/** The name of the underlying algorithm, for tests and diagnostics. */
+	String getAlgorithm() {
+		return random.getAlgorithm();
 	}
 
 	public byte[] getBytes(int n) {

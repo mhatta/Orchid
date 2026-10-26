@@ -1,13 +1,11 @@
 package com.subgraph.orchid.data;
 
-import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-import com.subgraph.orchid.TorException;
 
 public class RandomSet<E> {
 	
@@ -21,12 +19,16 @@ public class RandomSet<E> {
 		random = createRandom();
 	}
 	
+	/*
+	 * The platform's default generator (NativePRNG or DRBG on the JDK,
+	 * Conscrypt's on Android), seeded from the operating system.  Orchid
+	 * asked for "SHA1PRNG" by name before: a legacy algorithm whose
+	 * implementation and seeding differ between providers, and whose flawed
+	 * seeding on early Android releases exposed private keys in other
+	 * applications.
+	 */
 	private static SecureRandom createRandom() {
-		try {
-			return SecureRandom.getInstance("SHA1PRNG");
-		} catch (NoSuchAlgorithmException e) {
-			throw new TorException(e);
-		}
+		return new SecureRandom();
 	}
 	
 	public boolean add(E o) {
