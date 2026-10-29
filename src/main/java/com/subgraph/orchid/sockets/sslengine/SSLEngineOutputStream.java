@@ -2,45 +2,30 @@ package com.subgraph.orchid.sockets.sslengine;
 
 import java.io.IOException;
 import java.io.OutputStream;
-import java.nio.ByteBuffer;
 
 public class SSLEngineOutputStream extends OutputStream {
 
 	private final SSLEngineManager manager;
-	private final ByteBuffer outputBuffer;
 	
 	public SSLEngineOutputStream(SSLEngineManager manager) {
 		this.manager = manager;
-		this.outputBuffer = manager.getSendBuffer();
 	}
 	
 	@Override
 	public void write(int b) throws IOException {
-		outputBuffer.put((byte) b);
-		manager.write();
+		manager.write(new byte[] { (byte) b }, 0, 1);
 	}
 	
 	@Override
-    public void write(byte b[], int off, int len) throws IOException {
-		int written = 0;
-		
-		while(written < len) {
-			int n = doWrite(b, off + written, len - written);
-			
-			written += n;
+	public void write(byte b[], int off, int len) throws IOException {
+		if(off < 0 || len < 0 || off + len > b.length || off + len < 0) {
+			throw new IndexOutOfBoundsException();
 		}
-    }
+		manager.write(b, off, len);
+	}
 	
 	@Override
 	public void close() throws IOException {
 		manager.close();
 	}
-	
-	private int doWrite(byte[] b, int off, int len) throws IOException {
-		int putLength = Math.min(len, outputBuffer.remaining());
-		outputBuffer.put(b, off, putLength);
-		manager.write();
-		return putLength;
-	}
-
 }

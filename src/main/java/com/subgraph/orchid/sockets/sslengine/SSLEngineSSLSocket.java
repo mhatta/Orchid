@@ -293,6 +293,25 @@ public class SSLEngineSSLSocket extends SSLSocket implements HandshakeCallbackHa
 		return socket.getReuseAddress();
 	}
 
+	/**
+	 * Send close_notify (unless a writer is stuck) and close the underlying
+	 * socket.  May be called from any thread, also while another thread is
+	 * blocked reading.
+	 */
+	@Override
+	public void close() throws IOException {
+		try {
+			manager.close();
+		} finally {
+			socket.close();
+		}
+	}
+
+	@Override
+	public boolean isClosed() {
+		return socket.isClosed();
+	}
+
 	@Override
 	public void shutdownInput() throws IOException {
 		throw new UnsupportedOperationException("shutdownInput() not supported on SSL Sockets");
@@ -332,7 +351,7 @@ public class SSLEngineSSLSocket extends SSLSocket implements HandshakeCallbackHa
 	}
 
 	@Override
-	public OutputStream getOutputStream() throws IOException {
+	public synchronized OutputStream getOutputStream() throws IOException {
 		if(outputStream == null) {
 			outputStream = new SSLEngineOutputStream(manager);
 		}

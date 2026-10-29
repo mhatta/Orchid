@@ -2,6 +2,7 @@ package com.subgraph.orchid.sockets.sslengine;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -14,6 +15,9 @@ import java.net.InetAddress;
 import java.net.Socket;
 import java.security.KeyStore;
 import java.util.Arrays;
+import java.util.Random;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import javax.net.ssl.KeyManagerFactory;
@@ -241,6 +245,123 @@ public class SSLEngineSSLSocketTest {
 		} finally {
 			s.close();
 		}
+	}
+
+	/*
+	 * One thread writes while another reads, as a Tor stream or an HTTP
+	 * client with a separate reader does.  The server echoes everything;
+	 * the data must come back intact.  The manager used to share its
+	 * buffers between the two threads without any locking.
+	 */
+	private void checkConcurrentEcho(String protocol) throws Exception {
+		assumeProtocol(protocol);
+		final byte[] data = new byte[2 * 1024 * 1024];
+		new Random(42).nextBytes(data);
+		startServer(protocol, new ServerBehaviour() {
+			public void serve(SSLSocket s) throws IOException {
+				final InputStream in = s.getInputStream();
+				final OutputStream out = s.getOutputStream();
+				final byte[] buffer = new byte[5000];
+				int n;
+				while((n = in.read(buffer)) >= 0) {
+					out.write(buffer, 0, n);
+					out.flush();
+				}
+			}
+		});
+		final SSLEngineSSLSocket s = connect(HOST);
+		final AtomicReference<Throwable> writerFailure = new AtomicReference<Throwable>();
+		try {
+			final Thread writer = new Thread(new Runnable() {
+				public void run() {
+					try {
+						final OutputStream out = s.getOutputStream();
+						final Random r = new Random(7);
+						int off = 0;
+						while(off < data.length) {
+							final int n = Math.min(1 + r.nextInt(40000), data.length - off);
+							if(n == 1) {
+								out.write(data[off]);
+							} else {
+								out.write(data, off, n);
+							}
+							off += n;
+						}
+						out.flush();
+					} catch(Throwable e) {
+						writerFailure.set(e);
+					}
+				}
+			});
+			writer.start();
+			final byte[] echoed;
+			try {
+				echoed = readFully(s.getInputStream(), data.length);
+			} catch(IOException e) {
+				if(writerFailure.get() != null) {
+					e.addSuppressed(writerFailure.get());
+				}
+				throw e;
+			}
+			writer.join();
+			assertTrue(String.valueOf(writerFailure.get()), writerFailure.get() == null);
+			assertArrayEquals(data, echoed);
+			assertEquals(protocol, s.getSession().getProtocol());
+		} finally {
+			s.close();
+		}
+	}
+
+	@Test(timeout = 60000)
+	public void testConcurrentReadWriteTls13() throws Exception {
+		checkConcurrentEcho("TLSv1.3");
+	}
+
+	@Test(timeout = 60000)
+	public void testConcurrentReadWriteTls12() throws Exception {
+		checkConcurrentEcho("TLSv1.2");
+	}
+
+	/* close() from another thread must not wait for a reader blocked on the network. */
+	@Test(timeout = 30000)
+	public void testCloseUnblocksReader() throws Exception {
+		assumeProtocol("TLSv1.3");
+		final CountDownLatch serverDone = new CountDownLatch(1);
+		startServer("TLSv1.3", new ServerBehaviour() {
+			public void serve(SSLSocket s) throws IOException {
+				try {
+					// send nothing; wait for the client to go away
+					readToEof(s.getInputStream());
+				} catch(IOException e) {
+					// the client may close without close_notify
+				} finally {
+					serverDone.countDown();
+				}
+			}
+		});
+		final SSLEngineSSLSocket s = connect(HOST);
+		s.startHandshake();
+		final CountDownLatch readerDone = new CountDownLatch(1);
+		final Thread reader = new Thread(new Runnable() {
+			public void run() {
+				try {
+					s.getInputStream().read();
+				} catch(IOException e) {
+					// expected: the socket was closed under the reader
+				} finally {
+					readerDone.countDown();
+				}
+			}
+		});
+		reader.start();
+		Thread.sleep(300);
+		assertFalse("the reader returned without data", readerDone.await(0, TimeUnit.MILLISECONDS));
+		final long start = System.currentTimeMillis();
+		s.close();
+		assertTrue("close() blocked behind the reader", System.currentTimeMillis() - start < 3000);
+		assertTrue("the reader was not woken up", readerDone.await(5, TimeUnit.SECONDS));
+		assertTrue(s.isClosed());
+		assertTrue("the server did not see the connection end", serverDone.await(5, TimeUnit.SECONDS));
 	}
 
 	@Test(timeout = 30000)

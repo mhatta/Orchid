@@ -3,11 +3,12 @@ package com.subgraph.orchid.sockets.sslengine;
 import com.subgraph.orchid.logging.Logger;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.net.SocketException;
-import java.nio.BufferOverflowException;
-import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.ReentrantLock;
 
 import javax.net.ssl.SSLEngine;
 import javax.net.ssl.SSLEngineResult;
@@ -16,21 +17,48 @@ import javax.net.ssl.SSLEngineResult.Status;
 import javax.net.ssl.SSLException;
 import javax.net.ssl.SSLSession;
 
+/**
+ * Drives an SSLEngine over a pair of plain streams.
+ *
+ * One thread may read while another writes, as with any socket: the
+ * receiving side (peerApplicationBuffer, peerNetworkBuffer) is guarded by
+ * readLock and the sending side (myApplicationBuffer, myNetworkBuffer) by
+ * writeLock.  A thread that needs both, to run the initial handshake or to
+ * answer a post-handshake message such as a TLS 1.3 KeyUpdate while
+ * reading, always takes readLock first.  Only the initial handshake reads
+ * from the network on behalf of the handshake; afterwards handshake records
+ * are unwrapped by whichever thread reads, and a writer never blocks on the
+ * network for input.
+ */
 public class SSLEngineManager {
     private static final Logger logger = Logger.getInstance(SSLEngineManager.class);
-	
+
+    /** How long close() waits for a writer before closing without close_notify. */
+    private static final long CLOSE_LOCK_TIMEOUT = 1000;
+
+    /** How long write() waits for an engine that sends nothing (see waitForEngine()). */
+    private static final long WRITE_STALL_TIMEOUT = 30 * 1000;
+
     private final SSLEngine engine;
     private final InputStream input;
     private final OutputStream output;
 
+    private final ReentrantLock readLock = new ReentrantLock();
+    private final ReentrantLock writeLock = new ReentrantLock();
+
+    /* guarded by readLock */
     private final ByteBuffer peerApplicationBuffer;
     private final ByteBuffer peerNetworkBuffer;
+    private boolean inputEOF = false;
+
+    /* guarded by writeLock */
     private final ByteBuffer myApplicationBuffer;
     private final ByteBuffer myNetworkBuffer;
+    private final ByteBuffer emptyBuffer = ByteBuffer.allocate(0);
 
     private final HandshakeCallbackHandler handshakeCallback;
 
-    private boolean handshakeStarted = false;
+    private volatile boolean handshakeStarted = false;
 
 
     SSLEngineManager(SSLEngine engine, HandshakeCallbackHandler handshakeCallback, InputStream input, OutputStream output) {
@@ -58,67 +86,153 @@ public class SSLEngineManager {
         return ByteBuffer.wrap(array);
     }
 
+    /**
+     * Run the initial handshake, unless it was already started.  Holds both
+     * locks, so that neither reads nor writes of application data overlap it.
+     */
     void startHandshake() throws IOException {
-        logger.debug("startHandshake()");
-        handshakeStarted = true;
-        engine.beginHandshake();
-        runHandshake();
+        readLock.lock();
+        try {
+            writeLock.lock();
+            try {
+                if(handshakeStarted) {
+                    return;
+                }
+                logger.debug("startHandshake()");
+                handshakeStarted = true;
+                engine.beginHandshake();
+                runHandshake(true);
+            } finally {
+                writeLock.unlock();
+            }
+        } finally {
+            readLock.unlock();
+        }
     }
 
-    ByteBuffer getSendBuffer() {
-        return myApplicationBuffer;
-    }
-
-    ByteBuffer getRecvBuffer() {
-        return peerApplicationBuffer;
-    }
-
-
-    int write() throws IOException {
-        logger.debug("write()");
+    /* Must be called without holding either lock (lock order is read, then write). */
+    private void ensureHandshake() throws IOException {
         if(!handshakeStarted) {
             startHandshake();
         }
-        final int p = myApplicationBuffer.position();
-        if(p == 0) {
+    }
+
+    /**
+     * Encrypt and send len bytes of b.  Returns when all of them have been
+     * written to the network.
+     */
+    void write(byte[] b, int off, int len) throws IOException {
+        ensureHandshake();
+        writeLock.lock();
+        try {
+            int written = 0;
+            while(written < len) {
+                final int n = Math.min(len - written, myApplicationBuffer.remaining());
+                myApplicationBuffer.put(b, off + written, n);
+                written += n;
+                wrapApplicationData();
+            }
+        } finally {
+            writeLock.unlock();
+        }
+    }
+
+    /* Called with writeLock held: wrap and send everything in myApplicationBuffer. */
+    private void wrapApplicationData() throws IOException {
+        long stalledSince = 0;
+        while(myApplicationBuffer.position() > 0) {
+            myApplicationBuffer.flip();
+            final SSLEngineResult result = engine.wrap(myApplicationBuffer, myNetworkBuffer);
+            myApplicationBuffer.compact();
+            logResult(result);
+
+            switch(result.getStatus()) {
+            case BUFFER_OVERFLOW:
+                if(myNetworkBuffer.position() == 0) {
+                    throw new SSLException("TLS record larger than the network buffer ("+ myNetworkBuffer.capacity() +" bytes)");
+                }
+                break;
+            case CLOSED:
+                throw new SSLException("SSLEngine is closed");
+            default:
+                break;
+            }
+
+            flush();
+            runHandshake(false);
+
+            if(result.bytesConsumed() > 0 || result.bytesProduced() > 0 || result.getStatus() == Status.BUFFER_OVERFLOW) {
+                stalledSince = 0;
+            } else {
+                stalledSince = waitForEngine(stalledSince);
+            }
+        }
+    }
+
+    /*
+     * wrap() consumed and produced nothing.  This happens while the reading
+     * thread processes a post-handshake message (a TLS 1.3 NewSessionTicket
+     * or KeyUpdate): the engine asks for a delegated task, which the reader
+     * may already be running, or for more input, which only the reader can
+     * unwrap.  Wait a little and try again, but not forever.
+     */
+    private long waitForEngine(long stalledSince) throws IOException {
+        final long now = System.currentTimeMillis();
+        if(stalledSince == 0) {
+            stalledSince = now;
+        } else if(now - stalledSince > WRITE_STALL_TIMEOUT) {
+            throw new SSLException("TLS engine sends no data (handshake status "+ engine.getHandshakeStatus() +")");
+        }
+        if(engine.getHandshakeStatus() == HandshakeStatus.NEED_TASK) {
+            synchronousRunDelegatedTasks();
+            return stalledSince;
+        }
+        try {
+            Thread.sleep(1);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new InterruptedIOException("Interrupted while waiting for the TLS engine");
+        }
+        return stalledSince;
+    }
+
+    /**
+     * Read up to len bytes of application data into b.  Returns the number
+     * of bytes read, which is more than zero unless len is zero, or -1 at
+     * the end of the stream.
+     */
+    int read(byte[] b, int off, int len) throws IOException {
+        if(len == 0) {
             return 0;
         }
-        myNetworkBuffer.clear();
-        myApplicationBuffer.flip();
-        final SSLEngineResult result = engine.wrap(myApplicationBuffer, myNetworkBuffer);
-        myApplicationBuffer.compact();
-        logResult(result);
-
-        switch(result.getStatus()) {
-        case BUFFER_OVERFLOW:
-            throw new BufferOverflowException();
-        case BUFFER_UNDERFLOW:
-            throw new BufferUnderflowException();
-        case CLOSED:
-            throw new SSLException("SSLEngine is closed");
-
-        case OK:
-            break;
-        default:
-            break;
+        ensureHandshake();
+        readLock.lock();
+        try {
+            while(peerApplicationBuffer.position() == 0) {
+                if(inputEOF) {
+                    return -1;
+                }
+                if(readRecords() < 0) {
+                    inputEOF = true;
+                    return -1;
+                }
+            }
+            peerApplicationBuffer.flip();
+            final int n = Math.min(len, peerApplicationBuffer.remaining());
+            peerApplicationBuffer.get(b, off, n);
+            peerApplicationBuffer.compact();
+            return n;
+        } finally {
+            readLock.unlock();
         }
-
-        flush();
-        if(runHandshake()) {
-            write();
-        }
-
-        return p - myApplicationBuffer.position();
-
     }
 
     /**
      * Read application data from the peer into peerApplicationBuffer.
+     * Called with readLock held.
      *
      * Returns the number of bytes added to peerApplicationBuffer, which is
-     * always more than zero, or -1 at the end of the stream.  It never
-     * returns 0: callers take a read that produced nothing for the end of
-     * the stream.
+     * always more than zero, or -1 at the end of the stream.
      *
      * TLS records are unwrapped until one of them carries application data.
      * Records without any are common: TLS 1.3 servers send NewSessionTicket
@@ -128,11 +242,8 @@ public class SSLEngineManager {
      * network is read again, so that data the peer has sent is never left
      * waiting in peerNetworkBuffer while we block on the socket.
      */
-    int read() throws IOException {
-        logger.debug("read()");
-        if(!handshakeStarted) {
-            startHandshake();
-        }
+    private int readRecords() throws IOException {
+        logger.debug("readRecords()");
 
         while(true) {
             if(engine.isInboundDone()) {
@@ -154,12 +265,12 @@ public class SSLEngineManager {
 
                 case CLOSED:
                     // close_notify from the peer
-                    runHandshake();
+                    runHandshake(false);
                     return (produced > 0) ? produced : -1;
 
                 case OK:
                     // Answer whatever the record asked for (a KeyUpdate needs a reply).
-                    runHandshake();
+                    runHandshake(false);
                     if(produced > 0) {
                         return produced;
                     }
@@ -191,32 +302,54 @@ public class SSLEngineManager {
         }
     }
 
+    /**
+     * Send close_notify and close the underlying output stream.
+     *
+     * A reader blocked on the network holds readLock, so this takes only
+     * writeLock, and does not wait for the peer's close_notify.  If a
+     * writer is stuck (the peer stopped reading), close_notify is skipped
+     * after CLOSE_LOCK_TIMEOUT and the stream is closed anyway, which also
+     * unblocks the reader and the writer.
+     */
     void close() throws IOException {
+        boolean locked = false;
         try {
-            flush();
-            if(!engine.isOutboundDone()) {
+            locked = writeLock.tryLock(CLOSE_LOCK_TIMEOUT, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        try {
+            if(locked && handshakeStarted && !engine.isOutboundDone()) {
+                flush();
                 engine.closeOutbound();
-                runHandshake();
-            } else if(!engine.isInboundDone()) {
-                engine.closeInbound();
-                runHandshake();
+                runHandshake(false);
             }
         } finally {
+            if(locked) {
+                writeLock.unlock();
+            }
             output.close();
         }
     }
 
-    void flush() throws IOException {
+    /* Called with writeLock held. */
+    private void flush() throws IOException {
         myNetworkBuffer.flip();
         networkWriteBuffer(myNetworkBuffer);
         myNetworkBuffer.compact();
     }
 
 
-    private boolean runHandshake() throws IOException {
+    /*
+     * Process what the engine asks for until it asks for nothing more.
+     * NEED_UNWRAP is only acted on during the initial handshake
+     * (canUnwrap); afterwards the reading thread unwraps handshake records
+     * along with application data.  NEED_WRAP takes writeLock.
+     */
+    private boolean runHandshake(boolean canUnwrap) throws IOException {
         boolean handshakeRan = false;
         while(true) {
-            if(!processHandshake()) {
+            if(!processHandshake(canUnwrap)) {
                 return handshakeRan;
             } else {
                 handshakeRan = true;
@@ -224,19 +357,27 @@ public class SSLEngineManager {
         }
     }
 
-    private boolean processHandshake() throws IOException {
+    private boolean processHandshake(boolean canUnwrap) throws IOException {
         final HandshakeStatus hs = engine.getHandshakeStatus();
         logger.debug("processHandshake() hs = "+ hs);
         switch(hs) {
         case NEED_TASK:
             synchronousRunDelegatedTasks();
-            return processHandshake();
+            return processHandshake(canUnwrap);
 
         case NEED_UNWRAP:
+            if(!canUnwrap) {
+                return false;
+            }
             return handshakeUnwrap();
 
         case NEED_WRAP:
-            return handshakeWrap();
+            writeLock.lock();
+            try {
+                return handshakeWrap();
+            } finally {
+                writeLock.unlock();
+            }
 
         default:
             return false;
@@ -255,6 +396,7 @@ public class SSLEngineManager {
         }
     }
 
+    /* Called with both locks held, during the initial handshake. */
     private boolean handshakeUnwrap() throws IOException {
             logger.debug("handshakeUnwrap()");
 
@@ -290,11 +432,11 @@ public class SSLEngineManager {
             }
     }
 
+    /* Called with writeLock held. */
     private boolean handshakeWrap() throws IOException {
         logger.debug("handshakeWrap()");
-        myApplicationBuffer.flip();
-        final SSLEngineResult result = engine.wrap(myApplicationBuffer, myNetworkBuffer);
-        myApplicationBuffer.compact();
+        // Handshake messages only: application data is wrapped by write().
+        final SSLEngineResult result = engine.wrap(emptyBuffer, myNetworkBuffer);
         logResult(result);
 
         if(result.getHandshakeStatus() == HandshakeStatus.FINISHED) {
