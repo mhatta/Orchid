@@ -15,6 +15,13 @@ import com.subgraph.orchid.data.IPv4Address;
 
 public interface TorConfig {
 	
+	/**
+	 * The directory where Orchid keeps its state (entry guards) and its
+	 * directory caches.  It must be writable: TorClient#start() fails
+	 * otherwise.  The default is ~/.orchid, except on Android, where there
+	 * is no default and the application must set one, preferably under
+	 * Context#getNoBackupFilesDir() so that it stays out of backups.
+	 */
 	File getDataDirectory();
 	void setDataDirectory(File directory);
 	

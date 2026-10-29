@@ -1,5 +1,6 @@
 package com.subgraph.orchid.config;
 
+import com.subgraph.orchid.Tor;
 import com.subgraph.orchid.TorConfig;
 import com.subgraph.orchid.data.HexDigest;
 import com.subgraph.orchid.data.IPv4Address;
@@ -13,7 +14,8 @@ import java.util.concurrent.TimeUnit;
 public class TorConfigImpl implements TorConfig {
 
     private void resetDefaults() {
-        dataDirectory = toFile("~/.orchid");
+        // Android has no usable home directory; the application must set one.
+        dataDirectory = Tor.isAndroidRuntime() ? null : toFile("~/.orchid");
         circuitBuildTimeout = toMS(60, TimeUnit.SECONDS);
         circuitStreamTimeout = 0;
         circuitIdleTimeout = toMS(1, TimeUnit.HOURS);

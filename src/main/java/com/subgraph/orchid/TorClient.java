@@ -10,6 +10,7 @@ import javax.net.SocketFactory;
 
 import com.subgraph.orchid.circuits.TorInitializationTracker;
 import com.subgraph.orchid.dashboard.Dashboard;
+import com.subgraph.orchid.directory.DataDirectory;
 import com.subgraph.orchid.directory.downloader.DirectoryDownloaderImpl;
 import com.subgraph.orchid.logging.Logger;
 import com.subgraph.orchid.sockets.OrchidSocketFactory;
@@ -30,6 +31,7 @@ public class TorClient {
     private final DirectoryDownloaderImpl directoryDownloader;
     private final Dashboard dashboard;
 
+    private final boolean usesDataDirectory;
     private boolean isStarted = false;
     private boolean isStopped = false;
 
@@ -40,6 +42,8 @@ public class TorClient {
     }
 
     public TorClient(DirectoryStore customDirectoryStore) {
+            // A custom DirectoryStore keeps the state itself.
+            usesDataDirectory = (customDirectoryStore == null);
             config = Tor.createConfig();
             directory = Tor.createDirectory(config, customDirectoryStore);
             initializationTracker = Tor.createInitalizationTracker();
@@ -73,6 +77,9 @@ public class TorClient {
             }
             logger.info("Starting Orchid (version: "+ Tor.getFullVersion() +")");
             verifyUnlimitedStrengthPolicyInstalled();
+            if(usesDataDirectory) {
+                    DataDirectory.prepare(config.getDataDirectory());
+            }
             directoryDownloader.start(directory);
             circuitManager.startBuildingCircuits();
             if(dashboard.isEnabledByProperty()) {
