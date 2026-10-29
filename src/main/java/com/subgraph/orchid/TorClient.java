@@ -112,6 +112,26 @@ public class TorClient {
         }
     }
 
+    /**
+     * Tell Orchid that the network changed, for example from Wi-Fi to
+     * mobile data, or back online after a time without connectivity.  On
+     * Android, call it from a <code>ConnectivityManager.NetworkCallback</code>
+     * (<code>onAvailable()</code>, or <code>onLost()</code> of the network in
+     * use).
+     *
+     * All connections to relays are closed, since connections made over
+     * the old network would only fail when their TCP connections time out,
+     * and the circuits on them are destroyed.  Entry guards that were found
+     * unreachable are tried again.  New circuits are then built as usual;
+     * streams open on the old circuits are closed.
+     */
+    public void notifyNetworkChanged() {
+        ensureStarted();
+        logger.info("Network changed: closing the connections to relays");
+        circuitManager.networkChanged();
+        connectionCache.closeAllConnections();
+    }
+
     public Directory getDirectory() {
         return directory;
     }

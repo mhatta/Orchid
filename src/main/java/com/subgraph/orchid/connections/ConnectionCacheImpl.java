@@ -3,7 +3,10 @@ package com.subgraph.orchid.connections;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
@@ -45,8 +48,16 @@ public class ConnectionCacheImpl implements ConnectionCache, DashboardRenderable
         public ConnectionImpl call() throws Exception {
             final SSLSocket socket = factory.createSocket();
             final ConnectionImpl conn = new ConnectionImpl(config, socket, router, initializationTracker, isDirectoryConnection);
-            conn.connect();
-            return conn;
+            pendingConnections.add(conn);
+            try {
+                if(isClosed) {
+                    conn.closeSocket();
+                }
+                conn.connect();
+                return conn;
+            } finally {
+                pendingConnections.remove(conn);
+            }
         }
     }
 
@@ -66,6 +77,8 @@ public class ConnectionCacheImpl implements ConnectionCache, DashboardRenderable
     }
 
     private final ConcurrentMap<Router, Future<ConnectionImpl>> activeConnections = new ConcurrentHashMap<Router, Future<ConnectionImpl>>();
+    /* Connections still in the TCP, TLS or link handshake, so that they can be closed too. */
+    private final Set<ConnectionImpl> pendingConnections = Collections.newSetFromMap(new ConcurrentHashMap<ConnectionImpl, Boolean>());
     private final ConnectionSocketFactory factory = new ConnectionSocketFactory();
     private final ScheduledExecutorService scheduledExecutor = Executors.newSingleThreadScheduledExecutor();
 
@@ -86,25 +99,46 @@ public class ConnectionCacheImpl implements ConnectionCache, DashboardRenderable
             return;
         }
         isClosed = true;
-        for(Future<ConnectionImpl> f: activeConnections.values()) {
+        closeConnections();
+        scheduledExecutor.shutdownNow();
+    }
+
+    /**
+     * Close every connection to a relay, including those still being
+     * opened, and keep the cache open.  Circuits on the closed connections
+     * are destroyed, so new ones are built on new connections.  Used when
+     * the network changes: connections made over the old network would
+     * otherwise only fail when their TCP connections time out.
+     */
+    @Override
+    public void closeAllConnections() {
+        if(isClosed) {
+            return;
+        }
+        closeConnections();
+    }
+
+    private void closeConnections() {
+        for(Map.Entry<Router, Future<ConnectionImpl>> entry: activeConnections.entrySet()) {
+            final Future<ConnectionImpl> f = entry.getValue();
+            activeConnections.remove(entry.getKey(), f);
             if(f.isDone()) {
                 try {
-                    ConnectionImpl conn = f.get();
-                    conn.closeSocket();
+                    f.get().closeSocket();
                 } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
                     logger.warn("Unexpected interruption while closing connection");
+                } catch (CancellationException e) {
+                    // nothing to close
                 } catch (ExecutionException e) {
-                    logger.warn("Exception closing connection: "+ e.getCause());
+                    // the connection failed and has no socket open
                 }
-            } else {
-                // FIXME this doesn't close the socket, so the connection task lingers
-                // A proper fix would require maintaining pending connections in a separate
-                // collection.
-                f.cancel(true);
             }
         }
-        activeConnections.clear();
-        scheduledExecutor.shutdownNow();
+        // Closing the socket makes a connection in progress fail at once.
+        for(ConnectionImpl conn: pendingConnections) {
+            conn.closeSocket();
+        }
     }
 
     @Override

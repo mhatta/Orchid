@@ -17,6 +17,13 @@ public interface CircuitManager {
 	 */
 	void startBuildingCircuits();
 	void stopBuildingCircuits(boolean killCircuits);
+
+	/**
+	 * The network changed: entry guards marked unreachable are tried again
+	 * before new ones are chosen.  The default implementation does nothing.
+	 */
+	default void networkChanged() {
+	}
 	/**
 	 * Attempt to open an exit stream to the specified destination <code>hostname</code> and
 	 * <code>port</code>.

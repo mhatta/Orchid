@@ -50,6 +50,24 @@ public class EntryGuards {
         this.executor = Threading.newPool("EntryGuards worker");
     }
 
+    /**
+     * The network changed (another Wi-Fi network, mobile data, back
+     * online).  Guards that could not be reached are likely to have failed
+     * because the network was down, so they are tried again before a new
+     * guard is chosen: marking them down for good would make a client that
+     * was offline for a while move to new guards, which Tor avoids.
+     */
+    public void networkChanged() {
+        synchronized (lock) {
+            for(GuardEntry e: directory.getGuardEntries()) {
+                if(e.getDownSince() != null) {
+                    e.clearDownSince();
+                }
+            }
+            lock.notifyAll();
+        }
+    }
+
     public boolean isUsingBridges() {
         return config.getUseBridges();
     }

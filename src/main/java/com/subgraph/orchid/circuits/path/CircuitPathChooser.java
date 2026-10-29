@@ -35,6 +35,13 @@ public class CircuitPathChooser {
 		this.useEntryGuards = false;
 	}
 
+	/** See {@link EntryGuards#networkChanged()}. */
+	public void networkChanged() {
+		if(entryGuards != null) {
+			entryGuards.networkChanged();
+		}
+	}
+
 	public void enableEntryGuards(EntryGuards entryGuards) {
 		this.entryGuards = entryGuards;
 		this.useEntryGuards = true;

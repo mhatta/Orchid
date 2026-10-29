@@ -19,5 +19,15 @@ public interface ConnectionCache {
 	
 	void close();
 
+	/**
+	 * Close every connection to a relay, including those still being
+	 * opened, but keep the cache open for new connections.  The circuits on
+	 * these connections are destroyed.
+	 *
+	 * The default implementation does nothing.
+	 */
+	default void closeAllConnections() {
+	}
+
 	boolean isClosed();
 }

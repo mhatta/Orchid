@@ -214,6 +214,11 @@ public class CircuitManagerImpl implements CircuitManager, DashboardRenderable {
 		return ac;
 	}
 
+	@Override
+	public void networkChanged() {
+		pathChooser.networkChanged();
+	}
+
 	public Stream openExitStreamTo(String hostname, int port)
 			throws InterruptedException, TimeoutException, OpenFailedException {
 		if(hostname.endsWith(".onion")) {
