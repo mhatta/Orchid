@@ -1,23 +1,45 @@
 package com.subgraph.orchid.logging;
 
 import com.subgraph.orchid.ApplicationProperties;
-import java.text.SimpleDateFormat;
-import java.util.Calendar;
 
+/**
+ * Orchid's logger.  Messages at or above
+ * {@link ApplicationProperties#getLoggingThreshold()} go to the
+ * {@link LogHandler} set with {@link #setHandler(LogHandler)}, by default
+ * {@link ConsoleLogHandler} (<code>System.out</code>).
+ */
 public class Logger {
-    private static final SimpleDateFormat LOG_TIMESTAMP_FORMAT = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss,SSS");
-    private final Class aClass;
+    private static volatile LogHandler handler = ConsoleLogHandler.INSTANCE;
+
+    private final String name;
     
-    private Logger(Class aClass){
-        this.aClass = aClass;
+    private Logger(Class<?> aClass){
+        this.name = aClass.getSimpleName();
     }
     
-    public static Logger getInstance(Class aClass){
+    public static Logger getInstance(Class<?> aClass){
         return new Logger(aClass);
     }
+
+    /**
+     * Send all log messages to the given handler, or to
+     * {@link ConsoleLogHandler} again if it is null.
+     */
+    public static void setHandler(LogHandler newHandler){
+        handler = (newHandler != null) ? newHandler : ConsoleLogHandler.INSTANCE;
+    }
+
+    public static LogHandler getHandler(){
+        return handler;
+    }
     
-    private boolean shouldLog(SysLog level){
+    private static boolean shouldLog(SysLog level){
         return level.isGreaterOrEqual(ApplicationProperties.getLoggingThreshold());
+    }
+
+    /** Whether debug messages are logged, to skip building costly ones. */
+    public boolean isDebugEnabled(){
+        return shouldLog(SysLog.DEBUG);
     }
     
     public void debug(Object message){
@@ -25,10 +47,7 @@ public class Logger {
     }
     
     public void debug(Object message, Throwable throwable){
-        SysLog level = SysLog.DEBUG;
-        if(shouldLog(level)){
-            System.out.println(constrctLogMessage("DEBUG", message, throwable));
-        }
+        log(SysLog.DEBUG, message, throwable);
     }
     
     public void warn(Object message){
@@ -36,10 +55,7 @@ public class Logger {
     }
     
     public void warn(Object message, Throwable throwable){
-        SysLog level = SysLog.WARNING;
-        if(shouldLog(level)){
-            System.out.println(constrctLogMessage("WARN", message, throwable));
-        }
+        log(SysLog.WARNING, message, throwable);
     }
     
     public void info(Object message){
@@ -47,10 +63,7 @@ public class Logger {
     }
     
     public void info(Object message, Throwable throwable){
-        SysLog level = SysLog.INFORMATIONAL;
-        if(shouldLog(level)){
-            System.out.println(constrctLogMessage("INFO", message, throwable));
-        }
+        log(SysLog.INFORMATIONAL, message, throwable);
     }
     
     public void error(Object message){
@@ -58,10 +71,7 @@ public class Logger {
     }
     
     public void error(Object message, Throwable throwable){
-        SysLog level = SysLog.ERROR;
-        if(shouldLog(level)){
-            System.out.println(constrctLogMessage("ERROR", message, throwable));
-        }
+        log(SysLog.ERROR, message, throwable);
     }
     
     public void fatal(Object message){
@@ -69,21 +79,17 @@ public class Logger {
     }
     
     public void fatal(Object message, Throwable throwable){
-        SysLog level = SysLog.EMERGENCY;
-        if(shouldLog(level)){
-            System.out.println(constrctLogMessage("FATAL", message, throwable));
-        }
+        log(SysLog.EMERGENCY, message, throwable);
     }
-    
-    private String constrctLogMessage(String level, Object message, Throwable throwable){
-        String timestamp = LOG_TIMESTAMP_FORMAT.format(Calendar.getInstance().getTime());
-        String log = timestamp+" "+level+" - "+aClass.getSimpleName()+" - ";
-        if(message!=null){
-            log+=message.toString();
+
+    private void log(SysLog level, Object message, Throwable throwable){
+        if(!shouldLog(level)){
+            return;
         }
-        if(throwable!=null){
-            log+=throwable.getLocalizedMessage();
+        try {
+            handler.log(level, name, (message == null) ? "" : message.toString(), throwable);
+        } catch(RuntimeException e) {
+            // A failing handler must not break Orchid.
         }
-        return log;
     }
 }
