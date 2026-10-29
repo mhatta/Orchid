@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -48,6 +49,14 @@ public class ConnectionImpl implements Connection, DashboardRenderable {
     private static final Logger logger = Logger.getInstance(ConnectionImpl.class);
     private final static int CONNECTION_IDLE_TIMEOUT = 5 * 60 * 1000; // 5 minutes
     private final static int DEFAULT_CONNECT_TIMEOUT = 5000;
+    /*
+     * How long the TLS handshake and the Tor link handshake (VERSIONS,
+     * CERTS, AUTH_CHALLENGE, NETINFO) may take together.  Before there was
+     * no limit: a relay that accepted the TCP connection and then said
+     * nothing held the connecting thread, and every thread waiting for a
+     * connection to that relay, for ever.
+     */
+    final static long DEFAULT_HANDSHAKE_TIMEOUT = 30 * 1000;
     private final static Cell connectionClosedSentinel = CellImpl.createCell(0, 0);
 
     private final TorConfig config;
@@ -84,6 +93,8 @@ public class ConnectionImpl implements Connection, DashboardRenderable {
     private final ReentrantLock circuitsLock = Threading.lock("circuits");
     private final ReentrantLock outputLock = Threading.lock("output");
     private final AtomicLong lastActivity = new AtomicLong();
+    private volatile long handshakeTimeout = DEFAULT_HANDSHAKE_TIMEOUT;
+    private volatile long handshakeDeadline;
 
 
     public ConnectionImpl(TorConfig config, SSLSocket socket, Router router, TorInitializationTracker tracker, boolean isDirectoryConnection) {
@@ -143,8 +154,14 @@ public class ConnectionImpl implements Connection, DashboardRenderable {
             if(isConnected) {
                 return;
             }
+            /*
+             * Whatever goes wrong, the socket is closed: a failed attempt
+             * used to leave it open, together with its cell reading thread.
+             */
+            boolean connected = false;
             try {
                 doConnect();
+                connected = true;
             } catch (SocketTimeoutException e) {
                 throw new ConnectionTimeoutException();
             } catch (IOException e) {
@@ -156,6 +173,12 @@ public class ConnectionImpl implements Connection, DashboardRenderable {
                 throw e;
             } catch (ConnectionIOException e) {
                 throw new ConnectionFailedException(e.getMessage());
+            } catch (RuntimeException e) {
+                throw new ConnectionHandshakeException("Handshake failed: "+ e);
+            } finally {
+                if(!connected) {
+                    closeSocket();
+                }
             }
             isConnected = true;
         } finally {
@@ -164,13 +187,34 @@ public class ConnectionImpl implements Connection, DashboardRenderable {
     }
 
     private void doConnect() throws IOException, InterruptedException, ConnectionIOException {
+        handshakeDeadline = System.currentTimeMillis() + handshakeTimeout;
         connectSocket();
+        /*
+         * The TLS handshake is completed here, under a read timeout, rather
+         * than on the first write of a cell, which could block for ever.
+         * The timeout is lifted before the cell reading thread starts, which
+         * may then wait as long as the relay is quiet.
+         */
+        socket.setSoTimeout((int) Math.max(1, remainingHandshakeTime()));
+        socket.startHandshake();
+        socket.setSoTimeout(0);
+        socket.setKeepAlive(true);
         final ConnectionHandshake handshake = ConnectionHandshake.createHandshake(config, this, socket);
         input = socket.getInputStream();
         output = socket.getOutputStream();
         readCellsThread.start();
         handshake.runHandshake();
         updateLastActivity();
+    }
+
+    /** Milliseconds left before the handshake deadline (0 when it has passed). */
+    long remainingHandshakeTime() {
+        return Math.max(0, handshakeDeadline - System.currentTimeMillis());
+    }
+
+    /* For tests. */
+    void setHandshakeTimeout(long millis) {
+        handshakeTimeout = millis;
     }
 
     private void connectSocket() throws IOException {
@@ -294,6 +338,17 @@ public class ConnectionImpl implements Connection, DashboardRenderable {
                 return;
             } catch(TorException e) {
                 logger.warn("Unhandled Tor exception reading and processing cells: "+ e.getMessage(), e);
+            } catch(RuntimeException e) {
+                /*
+                 * A malformed cell (a BufferUnderflowException, say) used to
+                 * end this thread silently, leaving the connection and its
+                 * circuits open with nobody reading them.  Close it instead.
+                 */
+                logger.warn("Closing connection to "+ router +" after an unexpected error processing a cell: "+ e, e);
+                closeSocket();
+                connectionControlCells.add(connectionClosedSentinel);
+                notifyCircuitsLinkClosed();
+                return;
             }
         }
     }
@@ -320,9 +375,13 @@ public class ConnectionImpl implements Connection, DashboardRenderable {
         }
     }
 
+    /**
+     * The next connection control cell (VERSIONS, CERTS, AUTH_CHALLENGE,
+     * NETINFO), or null if none arrives before the handshake deadline.
+     */
     Cell readConnectionControlCell() throws ConnectionIOException {
         try {
-            return connectionControlCells.take();
+            return connectionControlCells.poll(remainingHandshakeTime(), TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
             closeSocket();
             throw new ConnectionIOException();

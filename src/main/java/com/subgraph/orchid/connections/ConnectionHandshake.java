@@ -97,6 +97,9 @@ public abstract class ConnectionHandshake {
     protected Cell expectCell(Integer... expectedTypes) throws ConnectionHandshakeException {
         try {
             final Cell c = connection.readConnectionControlCell();
+            if(c == null) {
+                throw new ConnectionHandshakeException("Timed out waiting for cell command "+ Arrays.asList(expectedTypes) +" in link handshake");
+            }
             for(int t: expectedTypes) {
                 if(c.getCommand() == t) {
                     return c;
