@@ -26,12 +26,29 @@ public class HttpConnection {
     private final static String CONTENT_LENGTH_HEADER = "Content-Length";
     private final static String CONTENT_ENCODING_HEADER = "Content-Encoding";
     private final static String COMPRESSION_SUFFIX = ".z";
+
+    /*
+     * Limits on what a directory server can make Orchid read (Tor's own
+     * limits are similar: MAX_HEADERS_SIZE and MAX_DIR_DL_SIZE).  Without
+     * them a malicious or broken directory cache, or an HSDir, could exhaust
+     * the heap with a huge Content-Length, an endless body or line, or a
+     * small compressed body that inflates to gigabytes, and bring down the
+     * application Orchid runs in.
+     */
+    /** Longest status or header line, in bytes. */
+    final static int MAX_LINE_LENGTH = 8192;
+    /** Most bytes of status line and headers together. */
+    final static int MAX_HEADERS_SIZE = 50000;
+    /** Default limit on a response body, before and after decompression. */
+    public final static int DEFAULT_MAX_BODY_SIZE = 16 * 1024 * 1024;
     private final String hostname;
     private final Stream stream;
     private final InputStream input;
     private final OutputStream output;
     private final Map<String, String> headers;
     private final boolean useCompression;
+    private final int maxBodySize;
+    private int headerBytesRead;
     private int responseCode;
     private boolean bodyCompressed;
     private String responseMessage;
@@ -42,6 +59,15 @@ public class HttpConnection {
     }
 
     public HttpConnection(Stream stream, boolean useCompression) {
+        this(stream, useCompression, DEFAULT_MAX_BODY_SIZE);
+    }
+
+    /**
+     * @param maxBodySize The largest response body accepted, in bytes, both
+     *        as received and after decompression.
+     */
+    public HttpConnection(Stream stream, boolean useCompression, int maxBodySize) {
+        this.maxBodySize = maxBodySize;
         this.hostname = getHostnameFromStream(stream);
         this.stream = stream;
         this.headers = new HashMap<String, String>();
@@ -179,19 +205,28 @@ public class HttpConnection {
         }
     }
 	
-    private void readBodyFromContentLength() throws IOException {
-        int bodyLength = Integer.parseInt(headers.get(CONTENT_LENGTH_HEADER));
-        byte[] bodyBuffer = new byte[bodyLength];
+    private void readBodyFromContentLength() throws IOException, DirectoryRequestFailedException {
+        final String value = headers.get(CONTENT_LENGTH_HEADER).trim();
+        final long bodyLength;
+        try {
+            bodyLength = Long.parseLong(value);
+        } catch (NumberFormatException e) {
+            throw new DirectoryRequestFailedException("Invalid Content-Length: "+ value);
+        }
+        if(bodyLength < 0 || bodyLength > maxBodySize) {
+            throw new DirectoryRequestFailedException("Content-Length "+ bodyLength +" is outside the accepted range (0 to "+ maxBodySize +" bytes)");
+        }
+        final byte[] bodyBuffer = new byte[(int) bodyLength];
         readAll(bodyBuffer);
         messageBody = bytesToBody(bodyBuffer);
     }
 	
-    private void readBodyUntilEOF() throws IOException {
+    private void readBodyUntilEOF() throws IOException, DirectoryRequestFailedException {
         final byte[] bodyBuffer = readToEOF();
         messageBody = bytesToBody(bodyBuffer);
     }
 	
-    private ByteBuffer bytesToBody(byte[] bs) throws IOException {
+    private ByteBuffer bytesToBody(byte[] bs) throws IOException, DirectoryRequestFailedException {
         if(bodyCompressed) {
             return ByteBuffer.wrap(decompressBuffer(bs));
         } else {
@@ -199,7 +234,7 @@ public class HttpConnection {
         }
     }
 	
-    private byte[] decompressBuffer(byte[] buffer) throws IOException {
+    private byte[] decompressBuffer(byte[] buffer) throws IOException, DirectoryRequestFailedException {
         final ByteArrayOutputStream output = new ByteArrayOutputStream();
         final Inflater decompressor = new Inflater();
         final byte[] decompressBuffer = new byte[4096];
@@ -207,19 +242,27 @@ public class HttpConnection {
         int n;
         try {
             while((n = decompressor.inflate(decompressBuffer)) != 0) {
+                if(output.size() + n > maxBodySize) {
+                    throw new DirectoryRequestFailedException("Decompressed response body exceeds "+ maxBodySize +" bytes");
+                }
                 output.write(decompressBuffer, 0, n);
             }
             return output.toByteArray();
         } catch (DataFormatException e) {
             throw new IOException("Error decompressing http body: "+ e);
+        } finally {
+            decompressor.end();
         }
     }
 	
-    private byte[] readToEOF() throws IOException {
+    private byte[] readToEOF() throws IOException, DirectoryRequestFailedException {
         final ByteArrayOutputStream output = new ByteArrayOutputStream();
         final byte[] buffer = new byte[2048];
         int n;
         while( (n = input.read(buffer, 0, buffer.length)) != -1) {
+            if(output.size() + n > maxBodySize) {
+                throw new DirectoryRequestFailedException("Response body exceeds "+ maxBodySize +" bytes");
+            }
             output.write(buffer, 0, n);
         }
         return output.toByteArray();
@@ -238,13 +281,20 @@ public class HttpConnection {
         }
     }
 	
-    private String readInputLine() throws IOException {
+    private String readInputLine() throws IOException, DirectoryRequestFailedException {
         final StringBuilder sb = new StringBuilder();
         int c;
         while((c = input.read()) != -1) {
+            headerBytesRead += 1;
+            if(headerBytesRead > MAX_HEADERS_SIZE) {
+                throw new DirectoryRequestFailedException("HTTP response headers exceed "+ MAX_HEADERS_SIZE +" bytes");
+            }
             if(c == '\n') {
                 return sb.toString();
             } else if(c != '\r') {
+                if(sb.length() >= MAX_LINE_LENGTH) {
+                    throw new DirectoryRequestFailedException("HTTP response line longer than "+ MAX_LINE_LENGTH +" bytes");
+                }
                 sb.append((char) c);
             }
         }

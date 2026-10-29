@@ -30,6 +30,11 @@ import com.subgraph.orchid.logging.Logger;
 public class HSV3DescriptorDownloader {
 	private static final Logger logger = Logger.getInstance(HSV3DescriptorDownloader.class);
 	private static final int DIRECTORY_STREAM_TIMEOUT = 15000;
+	/*
+	 * The largest v3 descriptor accepted from an HSDir, in bytes: Tor's own
+	 * limit (HS_DESC_MAX_LEN), which HSDirs also apply to uploads.
+	 */
+	static final int MAX_DESCRIPTOR_SIZE = 50000;
 
 	private final HiddenService hiddenService;
 	private final CircuitManagerImpl circuitManager;
@@ -65,7 +70,7 @@ public class HSV3DescriptorDownloader {
 		try {
 			stream = openHSDirectoryStream(dir);
 			/* The ".z" compression suffix is not supported for HS descriptors (rend-spec-v3 2.2.4) */
-			final HttpConnection http = new HttpConnection(stream, false);
+			final HttpConnection http = new HttpConnection(stream, false, MAX_DESCRIPTOR_SIZE);
 			http.sendGetRequest(descriptorPath(hiddenService.getBlindedPublicKey()));
 			http.readResponse();
 			if(http.getStatusCode() == 200) {
