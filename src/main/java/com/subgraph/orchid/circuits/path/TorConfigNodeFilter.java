@@ -7,6 +7,8 @@ import java.util.Map;
 
 import com.subgraph.orchid.Router;
 import com.subgraph.orchid.TorConfig;
+import com.subgraph.orchid.TorException;
+import com.subgraph.orchid.geoip.CountryCodeService;
 
 public class TorConfigNodeFilter {
 	
@@ -29,6 +31,55 @@ public class TorConfigNodeFilter {
 		addFilter(filters, EXIT_NODES_FILTER, config.getExitNodes());
 	}
 	
+	/**
+	 * Refuse a configuration whose node filters name countries when there
+	 * is no geoip database.  Without one every relay's country is
+	 * {@value CountryCodeService#UNKNOWN}, so <code>ExcludeNodes {ru}</code>
+	 * would exclude nothing and the relays the user meant to avoid would
+	 * be used, and <code>ExitNodes {de}</code> would leave no exit at all.
+	 * The country code {@value CountryCodeService#UNKNOWN} itself works
+	 * without a database and is allowed.
+	 *
+	 * @throws TorException naming the options and entries that need the database
+	 */
+	public static void checkCountryCodes(TorConfig config) {
+		checkCountryCodes(config, CountryCodeService.getInstance().isAvailable());
+	}
+
+	static void checkCountryCodes(TorConfig config, boolean geoipAvailable) {
+		if(geoipAvailable) {
+			return;
+		}
+		final List<String> entries = new ArrayList<String>();
+		addCountryCodeEntries(entries, EXCLUDE_NODES_FILTER, config.getExcludeNodes());
+		addCountryCodeEntries(entries, EXCLUDE_EXIT_NODES_FILTER, config.getExcludeExitNodes());
+		addCountryCodeEntries(entries, ENTRY_NODES_FILTER, config.getEntryNodes());
+		addCountryCodeEntries(entries, EXIT_NODES_FILTER, config.getExitNodes());
+		if(entries.isEmpty()) {
+			return;
+		}
+		final StringBuilder sb = new StringBuilder();
+		for(String e: entries) {
+			if(sb.length() > 0) {
+				sb.append(", ");
+			}
+			sb.append(e);
+		}
+		throw new TorException("Country codes in node filters need a geoip database, and none was found: "+ sb
+				+ ".  Install one (see "+ CountryCodeService.class.getName() +") or remove these entries.");
+	}
+
+	private static void addCountryCodeEntries(List<String> entries, String name, List<String> filterStrings) {
+		if(filterStrings == null) {
+			return;
+		}
+		for(String s: filterStrings) {
+			if(ConfigNodeFilter.isCountryCodeString(s) && !s.equals("{"+ CountryCodeService.UNKNOWN +"}")) {
+				entries.add(name +" "+ s);
+			}
+		}
+	}
+
 	private static void addFilter(Map<String, ConfigNodeFilter> filters, String name, List<String> filterStrings) {
 		if(filterStrings == null || filterStrings.isEmpty()) {
 			return;

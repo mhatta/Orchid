@@ -152,11 +152,14 @@ or `{??}` for relays of unknown country).  Orchid looks up the country of a rela
 * the file named by `-Dcom.subgraph.orchid.geoipFile=/path/to/geoip`,
 * `data/geoip` in the working directory (`tools/update-geoip.sh` downloads Tor's current one there),
 * the file installed with Tor: `/usr/share/tor/geoip` (on Debian and Ubuntu,
-  `apt install tor-geoipdb`), `/usr/local/share/tor/geoip` or `/opt/homebrew/share/tor/geoip`.
+  `apt install tor-geoipdb`), `/usr/local/share/tor/geoip` or `/opt/homebrew/share/tor/geoip`,
+* the classpath resource `/com/subgraph/orchid/geoip/geoip`, for applications (such as
+  Android apps) that bundle it.
 
-Without it the country of every relay is unknown, and Orchid warns that country entries in
-node filters match no relay; in particular `ExcludeNodes {cc}` then excludes nothing.  Tor
-makes the database from the [IPFire Location database](https://location.ipfire.org/)
+Without it the country of every relay is unknown, so `ExcludeNodes {cc}` would exclude
+nothing.  `TorClient#start()` therefore refuses to start, with a `TorException`, when
+`ExcludeNodes`, `ExcludeExitNodes`, `EntryNodes` or `ExitNodes` name a country and no
+database was found (`{??}` is allowed).  Tor makes the database from the [IPFire Location database](https://location.ipfire.org/)
 (CC BY-SA 4.0).
 
 ## Directory information
