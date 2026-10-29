@@ -93,6 +93,30 @@ config.addOnionClientAuth("xxxx...xxxx.onion", "<52 character base32 private key
 
 The Orchid Tor client exposes a SocketFactory that can be used within a JVM application. More detailed documentation and code examples are coming very soon.  [This Stack Overflow discussion](https://stackoverflow.com/questions/29171643/java-tor-lib-how-to-setup-orchid-tor-lib-with-java) might be helpful for now.
 
+## Using Orchid on Android
+
+Orchid targets Android 7.0 (API level 24) and later as a library; Android
+support is still being completed and tested.  An app that embeds it should:
+
+* **Set the data directory** before `start()`: the default, `~/.orchid`, does
+  not exist on Android, and `start()` fails without a usable data directory.
+  Use a folder that is not backed up:
+
+  ```java
+  TorClient client = new TorClient();
+  client.getConfig().setDataDirectory(new File(context.getNoBackupFilesDir(), "orchid"));
+  client.start();
+  ```
+
+* **Bundle a geoip database** as the classpath resource
+  `/com/subgraph/orchid/geoip/geoip` if node filters name countries; otherwise
+  `start()` refuses them (see below).
+* **Send the log to logcat** with `Logger.setHandler()`; the javadoc of
+  `LogHandler` has an example.  `SafeLogging` (on by default) keeps stream
+  destinations out of the log.
+* **Report network changes** with `client.notifyNetworkChanged()`, from a
+  `ConnectivityManager.NetworkCallback`.
+
 ## Authors
 
 Orchid was originally developed by [Bruce Leidl](https://github.com/brl) of [Subgraph](https://subgraph.com/).  The original web page can be found [here](https://subgraph.com/orchid/).  This README borrows heavily from there.
