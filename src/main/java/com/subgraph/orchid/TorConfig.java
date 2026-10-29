@@ -93,6 +93,11 @@ public interface TorConfig {
 	String getSocksListenAddress();
 	void setSocksListenAddress(String address);
 	
+	/**
+	 * Whether log messages leave out the destinations of streams (the host
+	 * names, addresses and onion addresses that SOCKS clients connect to).
+	 * On by default.  As the logger, this applies to the whole process.
+	 */
 	boolean getSafeLogging();
 	void setSafeLogging(boolean value);
 

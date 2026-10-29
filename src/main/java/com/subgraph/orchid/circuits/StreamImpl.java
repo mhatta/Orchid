@@ -16,6 +16,7 @@ import com.subgraph.orchid.circuits.cells.RelayCellImpl;
 import com.subgraph.orchid.dashboard.DashboardRenderable;
 import com.subgraph.orchid.dashboard.DashboardRenderer;
 import com.subgraph.orchid.logging.Logger;
+import com.subgraph.orchid.logging.SafeLogging;
 
 public class StreamImpl implements Stream, DashboardRenderable {
     private static final Logger logger = Logger.getInstance(StreamImpl.class);
@@ -42,7 +43,8 @@ public class StreamImpl implements Stream, DashboardRenderable {
     private int packageWindow;
     private int deliverWindow;
 
-    private String streamTarget = "";
+    /* For log messages: "[Directory]", or the exit target as SafeLogging allows. */
+    private volatile String streamTarget = "";
 
     StreamImpl(CircuitImpl circuit, CircuitNode targetNode, int streamId, boolean autoclose) {
         this.circuit = circuit;
@@ -148,7 +150,7 @@ public class StreamImpl implements Stream, DashboardRenderable {
     }
 
     void openExit(String target, int port, long timeout) throws InterruptedException, TimeoutException, StreamConnectFailedException {
-        streamTarget = target + ":"+ port;
+        streamTarget = SafeLogging.target(target, port);
         final RelayCell cell = new RelayCellImpl(circuit.getFinalCircuitNode(), circuit.getCircuitId(), streamId, RelayCell.RELAY_BEGIN);
         cell.putString(target + ":"+ port);
         circuit.sendRelayCellToFinalNode(cell);

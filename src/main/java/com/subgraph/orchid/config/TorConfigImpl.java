@@ -4,6 +4,7 @@ import com.subgraph.orchid.Tor;
 import com.subgraph.orchid.TorConfig;
 import com.subgraph.orchid.data.HexDigest;
 import com.subgraph.orchid.data.IPv4Address;
+import com.subgraph.orchid.logging.SafeLogging;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -332,6 +333,7 @@ public class TorConfigImpl implements TorConfig {
     @Override
     public void setSafeLogging(boolean value) {
         safeLogging = value;
+        SafeLogging.setEnabled(value);
     }
 
     @Override

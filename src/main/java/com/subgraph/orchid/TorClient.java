@@ -14,6 +14,7 @@ import com.subgraph.orchid.dashboard.Dashboard;
 import com.subgraph.orchid.directory.DataDirectory;
 import com.subgraph.orchid.directory.downloader.DirectoryDownloaderImpl;
 import com.subgraph.orchid.logging.Logger;
+import com.subgraph.orchid.logging.SafeLogging;
 import com.subgraph.orchid.sockets.OrchidSocketFactory;
 
 /**
@@ -46,6 +47,7 @@ public class TorClient {
             // A custom DirectoryStore keeps the state itself.
             usesDataDirectory = (customDirectoryStore == null);
             config = Tor.createConfig();
+            SafeLogging.setEnabled(config.getSafeLogging());
             directory = Tor.createDirectory(config, customDirectoryStore);
             initializationTracker = Tor.createInitalizationTracker();
             initializationTracker.addListener(createReadyFlagInitializationListener());

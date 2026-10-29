@@ -134,10 +134,10 @@ public class SocksClientTask implements Runnable {
 
     private Stream openConnectStream(SocksRequest request) throws InterruptedException, TimeoutException, OpenFailedException {
         if(request.hasHostname()) {
-            logger.debug("SOCKS CONNECT request to "+ request.getHostname() +":"+ request.getPort());
+            logger.debug("SOCKS CONNECT request to "+ request.getTarget());
             return circuitManager.openExitStreamTo(request.getHostname(), request.getPort());
         } else {
-            logger.debug("SOCKS CONNECT request to "+ request.getAddress() +":"+ request.getPort());
+            logger.debug("SOCKS CONNECT request to "+ request.getTarget());
             return circuitManager.openExitStreamTo(request.getAddress(), request.getPort());
         }
     }

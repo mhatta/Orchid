@@ -7,6 +7,7 @@ import com.subgraph.orchid.Stream;
 import com.subgraph.orchid.StreamConnectFailedException;
 import com.subgraph.orchid.data.IPv4Address;
 import com.subgraph.orchid.data.exitpolicy.ExitTarget;
+import com.subgraph.orchid.logging.SafeLogging;
 import com.subgraph.orchid.misc.GuardedBy;
 
 public class StreamExitRequest implements ExitTarget {
@@ -162,9 +163,6 @@ public class StreamExitRequest implements ExitTarget {
 	}
 	
 	public String toString() {
-		if(isAddress)
-			return address + ":"+ port;
-		else
-			return hostname + ":"+ port;
+		return SafeLogging.target(isAddress ? address.toString() : hostname, port);
 	}
 }
