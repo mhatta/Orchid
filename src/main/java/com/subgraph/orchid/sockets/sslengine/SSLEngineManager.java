@@ -58,7 +58,16 @@ public class SSLEngineManager {
 
     private final HandshakeCallbackHandler handshakeCallback;
 
-    private volatile boolean handshakeStarted = false;
+    /*
+     * Serializes the initial handshake.  A thread waits here, not on
+     * readLock, for a handshake in progress: a reader holds readLock while
+     * it blocks on the network, so a writer waiting for readLock after the
+     * handshake would wait for as long as no data arrives, and no data
+     * arrives when the peer waits for that writer.
+     */
+    private final Object handshakeLock = new Object();
+    /* Set when the initial handshake has ended, successfully or not. */
+    private volatile boolean handshakeDone = false;
 
 
     SSLEngineManager(SSLEngine engine, HandshakeCallbackHandler handshakeCallback, InputStream input, OutputStream output) {
@@ -87,32 +96,38 @@ public class SSLEngineManager {
     }
 
     /**
-     * Run the initial handshake, unless it was already started.  Holds both
-     * locks, so that neither reads nor writes of application data overlap it.
+     * Run the initial handshake, unless it already ran.  A thread that
+     * calls this while another runs the handshake waits until it has
+     * ended.  Reads and writes of application data start only after it
+     * (see ensureHandshake()), so no other thread holds readLock or
+     * writeLock here; both are taken because the handshake uses the
+     * buffers they guard.
      */
     void startHandshake() throws IOException {
-        readLock.lock();
-        try {
-            writeLock.lock();
-            try {
-                if(handshakeStarted) {
-                    return;
-                }
-                logger.debug("startHandshake()");
-                handshakeStarted = true;
-                engine.beginHandshake();
-                runHandshake(true);
-            } finally {
-                writeLock.unlock();
+        synchronized(handshakeLock) {
+            if(handshakeDone) {
+                return;
             }
-        } finally {
-            readLock.unlock();
+            readLock.lock();
+            try {
+                writeLock.lock();
+                try {
+                    logger.debug("startHandshake()");
+                    engine.beginHandshake();
+                    runHandshake(true);
+                } finally {
+                    writeLock.unlock();
+                }
+            } finally {
+                readLock.unlock();
+                handshakeDone = true;
+            }
         }
     }
 
-    /* Must be called without holding either lock (lock order is read, then write). */
+    /* Must be called without holding readLock or writeLock. */
     private void ensureHandshake() throws IOException {
-        if(!handshakeStarted) {
+        if(!handshakeDone) {
             startHandshake();
         }
     }
@@ -319,7 +334,7 @@ public class SSLEngineManager {
             Thread.currentThread().interrupt();
         }
         try {
-            if(locked && handshakeStarted && !engine.isOutboundDone()) {
+            if(locked && handshakeDone && !engine.isOutboundDone()) {
                 flush();
                 engine.closeOutbound();
                 runHandshake(false);

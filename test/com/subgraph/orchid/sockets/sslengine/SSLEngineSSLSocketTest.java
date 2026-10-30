@@ -251,7 +251,11 @@ public class SSLEngineSSLSocketTest {
 	 * One thread writes while another reads, as a Tor stream or an HTTP
 	 * client with a separate reader does.  The server echoes everything;
 	 * the data must come back intact.  The manager used to share its
-	 * buffers between the two threads without any locking.
+	 * buffers between the two threads without any locking.  Both threads
+	 * start before the handshake: a writer that waited for the handshake
+	 * on the read lock used to stay blocked behind the reader, which holds
+	 * that lock while it waits for data that the server only sends once
+	 * the writer has written.
 	 */
 	private void checkConcurrentEcho(String protocol) throws Exception {
 		assumeProtocol(protocol);
@@ -271,10 +275,13 @@ public class SSLEngineSSLSocketTest {
 		});
 		final SSLEngineSSLSocket s = connect(HOST);
 		final AtomicReference<Throwable> writerFailure = new AtomicReference<Throwable>();
+		// Both threads start before the handshake, so that they race to run it.
+		final CountDownLatch go = new CountDownLatch(1);
 		try {
 			final Thread writer = new Thread(new Runnable() {
 				public void run() {
 					try {
+						go.await();
 						final OutputStream out = s.getOutputStream();
 						final Random r = new Random(7);
 						int off = 0;
@@ -296,6 +303,7 @@ public class SSLEngineSSLSocketTest {
 			writer.start();
 			final byte[] echoed;
 			try {
+				go.countDown();
 				echoed = readFully(s.getInputStream(), data.length);
 			} catch(IOException e) {
 				if(writerFailure.get() != null) {
