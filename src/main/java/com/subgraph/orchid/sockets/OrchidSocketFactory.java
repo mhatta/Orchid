@@ -72,6 +72,32 @@ public class OrchidSocketFactory extends SocketFactory {
 		return createSocket(address, port);
 	}
 
+	/**
+	 * A placeholder address for <code>hostname</code>, for HTTP clients
+	 * that resolve names themselves before they connect, such as OkHttp.
+	 * Return it from the client's DNS hook instead of resolving the name:
+	 * a socket of this factory connected to it asks the exit relay to
+	 * resolve and connect to <code>hostname</code>, so that the name never
+	 * reaches the local DNS.  With OkHttp:
+	 *
+	 * <pre>
+	 * new OkHttpClient.Builder()
+	 *     .socketFactory(torClient.getSocketFactory("my-app"))
+	 *     .dns(host -&gt; Collections.singletonList(OrchidSocketFactory.unresolvedAddress(host)))
+	 *     .build();
+	 * </pre>
+	 *
+	 * The address is 0.0.0.0, carrying the host name; any other socket
+	 * connected to it would go to the local machine.
+	 */
+	public static InetAddress unresolvedAddress(String hostname) {
+		try {
+			return InetAddress.getByAddress(hostname, new byte[4]);
+		} catch (UnknownHostException e) {
+			throw new IllegalArgumentException(e);
+		}
+	}
+
 	private Socket connectOrchidSocket(Socket s, String host, int port) throws IOException {
 		final SocketAddress endpoint = InetSocketAddress.createUnresolved(host, port);
 		s.connect(endpoint);

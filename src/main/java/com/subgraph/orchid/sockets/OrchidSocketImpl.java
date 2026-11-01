@@ -67,9 +67,7 @@ public class OrchidSocketImpl extends SocketImpl {
 
 	@Override
 	protected void connect(InetAddress address, int port) throws IOException {
-		SocketAddress endpoint =
-				InetSocketAddress.createUnresolved(address.getHostAddress(), port);
-		connect(endpoint, 0);
+		doConnect(addressToName(address), port);
 	}
 
 	@Override
@@ -83,12 +81,33 @@ public class OrchidSocketImpl extends SocketImpl {
 		doConnect(addressToName(inetAddress), inetAddress.getPort());
 	}
 	
-	private String addressToName(InetSocketAddress address) {
+	/*
+	 * The name the exit relay is asked to connect to.  An unresolved address
+	 * keeps its host name, so that the name is resolved by the exit relay
+	 * and not by the local DNS.  A placeholder from
+	 * OrchidSocketFactory#unresolvedAddress() (0.0.0.0 carrying a host name)
+	 * stands for that host name too: HTTP clients such as OkHttp resolve
+	 * names before they connect, and with a Dns that returns placeholders
+	 * the name still reaches the exit relay.
+	 */
+	static String addressToName(InetSocketAddress address) {
 		if(address.getAddress() != null) {
-			return address.getAddress().getHostAddress();
+			return addressToName(address.getAddress());
 		} else {
-			return address.getHostName();
+			return address.getHostString();
 		}
+	}
+
+	static String addressToName(InetAddress address) {
+		if(address.isAnyLocalAddress()) {
+			// "host/0.0.0.0": the host name given, with no reverse lookup
+			final String s = address.toString();
+			final int slash = s.indexOf('/');
+			if(slash > 0) {
+				return s.substring(0, slash);
+			}
+		}
+		return address.getHostAddress();
 	}
 
 	private void doConnect(String host, int port) throws IOException {
