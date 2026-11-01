@@ -133,7 +133,8 @@ The Orchid Tor client exposes a SocketFactory that can be used within a JVM appl
 ## Using Orchid on Android
 
 Orchid targets Android 7.0 (API level 24) and later as a library; Android
-support is still being completed and tested.  An app that embeds it should:
+support is still being completed and tested.  [samples/android](samples/android)
+is a small app that does all of the following.  An app that embeds it should:
 
 * **Set the data directory** before `start()`: the default, `~/.orchid`, does
   not exist on Android, and `start()` fails without a usable data directory.
@@ -153,6 +154,9 @@ support is still being completed and tested.  An app that embeds it should:
   destinations out of the log.
 * **Report network changes** with `client.notifyNetworkChanged()`, from a
   `ConnectivityManager.NetworkCallback`.
+* **Keep host names off the device's DNS** with HTTP clients that resolve
+  names themselves, such as OkHttp: use `torClient.getSocketFactory(key)` and a
+  DNS hook that returns `OrchidSocketFactory.unresolvedAddress(host)`.
 * **Protect the SOCKS port**, if the app opens one: every app on the device
   can connect to `127.0.0.1`.  Set a random password with
   `TorConfig#setSocksPassword()` and give it only to the app's own HTTP client.

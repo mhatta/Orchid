@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- For ConnectivityManager.NetworkCallback (notifyNetworkChanged). -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!--
+      Orchid's data directory holds the entry guards and any onion service
+      client authorization keys: keep it, and everything else of the app,
+      out of backups and device-to-device transfers.  allowBackup="false"
+      stops backups up to Android 11; dataExtractionRules covers Android 12
+      and later, where allowBackup no longer stops device-to-device
+      transfers.  The data directory itself is under getNoBackupFilesDir(),
+      which is never backed up.
+    -->
+    <application
+        android:label="Orchid sample"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

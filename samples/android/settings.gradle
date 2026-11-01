@@ -1,0 +1,25 @@
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = 'orchid-android-sample'
+include ':app'
+
+// Build Orchid from this checkout instead of taking org.mhatta:orchid from
+// Maven Central.  Remove these lines to use the published release.
+includeBuild('../..') {
+    dependencySubstitution {
+        substitute module('org.mhatta:orchid') using project(':')
+    }
+}

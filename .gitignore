@@ -11,3 +11,9 @@
 # Tor geoip database fetched by tools/update-geoip.sh
 /data/geoip
 /data/geoip.gz
+
+# Android sample
+/samples/android/.gradle/
+/samples/android/build/
+/samples/android/app/build/
+/samples/android/local.properties
