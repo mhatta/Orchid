@@ -202,3 +202,7 @@ processResources {
         }
     }
 }
+
+// Maven Central requires a javadoc jar: keep the javadoc building, so that
+// "gradle build" (and CI) fails on a doclint error rather than the release.
+check.dependsOn javadoc

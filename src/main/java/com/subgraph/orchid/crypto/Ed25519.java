@@ -195,7 +195,7 @@ public final class Ed25519 {
 	 * Decode a scalar from 32 little-endian bytes after applying the standard
 	 * Ed25519 clamping: clear the three low bits, clear the top bit and set the
 	 * second highest bit.  This is the clamping applied to blinding factors in
-	 * [KEYBLIND] (h[0] &= 248; h[31] &= 63; h[31] |= 64).
+	 * [KEYBLIND] (h[0] &amp;= 248; h[31] &amp;= 63; h[31] |= 64).
 	 */
 	public static byte[] clampScalar(byte[] scalar) {
 		final byte[] s = Arrays.copyOf(scalar, 32);

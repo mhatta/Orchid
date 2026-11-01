@@ -61,9 +61,9 @@ public class TorMessageDigest {
 	}
 
 	/**
-	 * Return <tt>true</tt> if this is a 256 bit digest instance.
+	 * Return <code>true</code> if this is a 256 bit digest instance.
 	 *
-	 * @return <tt>true</tt> if this is a 256 bit digest instance.
+	 * @return <code>true</code> if this is a 256 bit digest instance.
 	 */
 	public boolean isDigest256() {
 		return algorithm != Algorithm.SHA1;
@@ -82,7 +82,7 @@ public class TorMessageDigest {
 
 	/**
 	 * Return the digest value of all data processed up until this point.
-	 * @return The digest value as an array of <code>TOR_DIGEST_SIZE<code> or <code>TOR_DIGEST256_SIZE</code> bytes.
+	 * @return The digest value as an array of <code>TOR_DIGEST_SIZE</code> or <code>TOR_DIGEST256_SIZE</code> bytes.
 	 */
 	public byte[] getDigestBytes() {
 		if(keccakInstance != null) {

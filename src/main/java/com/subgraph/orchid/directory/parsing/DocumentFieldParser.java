@@ -237,7 +237,7 @@ public interface DocumentFieldParser {
 	void resetRawDocument();
 	
 	/**
-	 * Empty the internal buffer which is capturing raw data from document being parsed and set buffer contents to <tt>initalContent</tt>.
+	 * Empty the internal buffer which is capturing raw data from document being parsed and set buffer contents to <code>initalContent</code>.
 	 * 
 	 * @param initialContent Initial raw document content.
 	 */
