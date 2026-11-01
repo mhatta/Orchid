@@ -39,7 +39,14 @@ public class Socks4Request extends SocksRequest {
 		command = readByte();
 		setPortData(readPortData());
 		byte[] ipv4Data = readIPv4AddressData();
-		readNullTerminatedString(); // Username
+		final String userId = readNullTerminatedString();
+		if(getConfig().getSocksPassword() != null) {
+			// SOCKS 4 has no password, so it cannot authenticate.
+			throw new SocksRequestException("SOCKS 4 refused: the SOCKS port requires a password (use SOCKS 5)");
+		}
+		if(!userId.isEmpty()) {
+			setIsolationKey("socks4", userId.getBytes(java.nio.charset.StandardCharsets.ISO_8859_1));
+		}
 		if(isVersion4aHostname(ipv4Data))
 			setHostname(readNullTerminatedString());
 		else

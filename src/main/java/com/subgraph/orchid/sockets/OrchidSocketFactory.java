@@ -16,14 +16,24 @@ import com.subgraph.orchid.TorClient;
 public class OrchidSocketFactory extends SocketFactory {
 	private final TorClient torClient;
 	private final boolean exceptionOnLocalBind;
+	private final String isolationKey;
 	
 	public OrchidSocketFactory(TorClient torClient) {
 		this(torClient, true);
 	}
 
 	public OrchidSocketFactory(TorClient torClient, boolean exceptionOnLocalBind) {
+		this(torClient, exceptionOnLocalBind, null);
+	}
+
+	/**
+	 * @param isolationKey sockets of this factory use circuits shared only
+	 *        with streams with the same key (null: the shared circuits)
+	 */
+	public OrchidSocketFactory(TorClient torClient, boolean exceptionOnLocalBind, String isolationKey) {
 		this.torClient = torClient;
 		this.exceptionOnLocalBind = exceptionOnLocalBind;
+		this.isolationKey = isolationKey;
 	}
 
     @Override
@@ -69,7 +79,7 @@ public class OrchidSocketFactory extends SocketFactory {
 	}
 	
 	private Socket createSocketInstance() throws SocketException {
-		final OrchidSocketImpl impl = new OrchidSocketImpl(torClient);
+		final OrchidSocketImpl impl = new OrchidSocketImpl(torClient, isolationKey);
 		if(Tor.isAndroidRuntime()) {
 			return new AndroidSocket(impl);
 		} else {

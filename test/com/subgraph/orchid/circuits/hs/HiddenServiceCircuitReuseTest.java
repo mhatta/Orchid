@@ -35,7 +35,7 @@ import com.subgraph.orchid.directory.downloader.DirectoryDownloaderImpl;
  */
 public class HiddenServiceCircuitReuseTest {
 	/* Two valid v3 addresses: the ed25519 base point and a multiple of it. */
-	private static final byte[] BASE_POINT = basePoint();
+	static final byte[] BASE_POINT = basePoint();
 	private static final String ONION_A = HSV3Address.encode(BASE_POINT) + ".onion";
 	private static final String ONION_B = HSV3Address.encode(
 			com.subgraph.orchid.crypto.Ed25519.blindPublicKey(BASE_POINT, com.subgraph.orchid.crypto.Ed25519.clampScalar(new byte[32]))) + ".onion";

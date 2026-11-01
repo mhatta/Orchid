@@ -92,6 +92,28 @@ public interface TorConfig {
 	 */
 	String getSocksListenAddress();
 	void setSocksListenAddress(String address);
+
+	/**
+	 * The password that SOCKS clients must give (SOCKS 5 username/password
+	 * authentication, RFC 1929), or null (the default) to accept clients
+	 * without authentication.  With a password, SOCKS 4 is refused.  The
+	 * user name is free, and streams with different user names never share
+	 * a circuit.
+	 *
+	 * On Android every app can connect to a SOCKS port on 127.0.0.1; a
+	 * random password, given only to the app's own HTTP client, keeps the
+	 * other apps out.
+	 *
+	 * The default implementation returns null.
+	 */
+	default String getSocksPassword() {
+		return null;
+	}
+
+	/** See {@link #getSocksPassword()}.  The default implementation throws UnsupportedOperationException. */
+	default void setSocksPassword(String password) {
+		throw new UnsupportedOperationException("setSocksPassword");
+	}
 	
 	/**
 	 * Whether log messages leave out the destinations of streams (the host

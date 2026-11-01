@@ -221,12 +221,18 @@ public class CircuitManagerImpl implements CircuitManager, DashboardRenderable {
 
 	public Stream openExitStreamTo(String hostname, int port)
 			throws InterruptedException, TimeoutException, OpenFailedException {
+		return openExitStreamTo(hostname, port, null);
+	}
+
+	@Override
+	public Stream openExitStreamTo(String hostname, int port, String isolationKey)
+			throws InterruptedException, TimeoutException, OpenFailedException {
 		if(hostname.endsWith(".onion")) {
-			return hiddenServiceManager.getStreamTo(hostname, port);
+			return hiddenServiceManager.getStreamTo(hostname, port, isolationKey);
 		}
 		validateHostname(hostname);
 		circuitCreationTask.predictPort(port);
-		return pendingExitStreams.openExitStream(hostname, port);
+		return pendingExitStreams.openExitStream(hostname, port, isolationKey);
 	}
 
 	private void validateHostname(String hostname) throws OpenFailedException {
@@ -252,9 +258,15 @@ public class CircuitManagerImpl implements CircuitManager, DashboardRenderable {
 	}
 	public Stream openExitStreamTo(IPv4Address address, int port)
 			throws InterruptedException, TimeoutException, OpenFailedException {
+		return openExitStreamTo(address, port, null);
+	}
+
+	@Override
+	public Stream openExitStreamTo(IPv4Address address, int port, String isolationKey)
+			throws InterruptedException, TimeoutException, OpenFailedException {
 		maybeRejectInternalAddress(address);
 		circuitCreationTask.predictPort(port);
-		return pendingExitStreams.openExitStream(address, port);
+		return pendingExitStreams.openExitStream(address, port, isolationKey);
 	}
 
 	public List<StreamExitRequest> getPendingExitStreams() {

@@ -19,6 +19,7 @@ public class StreamExitRequest implements ExitTarget {
 	private final String hostname;
 	private final int port;
 	private final Object requestCompletionLock;
+	private final String isolationKey;
 	
 	@GuardedBy("requestCompletionLock") private CompletionStatus completionStatus;	
 	@GuardedBy("requestCompletionLock") private Stream stream;
@@ -29,15 +30,24 @@ public class StreamExitRequest implements ExitTarget {
 	@GuardedBy("this") private long specificTimeout;
 
 	StreamExitRequest(Object requestCompletionLock, IPv4Address address, int port) {
-		this(requestCompletionLock, true, "", address, port);
+		this(requestCompletionLock, address, port, null);
 	}
 
 	StreamExitRequest(Object requestCompletionLock, String hostname, int port) {
-		this(requestCompletionLock, false, hostname, null, port);
+		this(requestCompletionLock, hostname, port, null);
+	}
+
+	StreamExitRequest(Object requestCompletionLock, IPv4Address address, int port, String isolationKey) {
+		this(requestCompletionLock, true, "", address, port, isolationKey);
+	}
+
+	StreamExitRequest(Object requestCompletionLock, String hostname, int port, String isolationKey) {
+		this(requestCompletionLock, false, hostname, null, port, isolationKey);
 	}
 	
-	private StreamExitRequest(Object requestCompletionLock, boolean isAddress, String hostname, IPv4Address address, int port) {
+	private StreamExitRequest(Object requestCompletionLock, boolean isAddress, String hostname, IPv4Address address, int port, String isolationKey) {
 		this.requestCompletionLock = requestCompletionLock;
+		this.isolationKey = isolationKey;
 		this.isAddress = isAddress;
 		this.hostname = hostname;
 		this.address = address;
@@ -59,6 +69,11 @@ public class StreamExitRequest implements ExitTarget {
 
 	public int getPort() {
 		return port;
+	}
+
+	/** The stream isolation key, or null.  See ExitCircuitImpl#claimIsolation(). */
+	String getIsolationKey() {
+		return isolationKey;
 	}
 
 	public synchronized void setStreamTimeout(long timeout) {

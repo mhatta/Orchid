@@ -48,6 +48,15 @@ public class HiddenServiceManager {
     }
 
     public Stream getStreamTo(String onion, int port) throws OpenFailedException, InterruptedException, TimeoutException {
+        return getStreamTo(onion, port, null);
+    }
+
+    /**
+     * As {@link #getStreamTo(String, int)}, on a rendezvous circuit used only
+     * by streams with the same isolation key: streams to one service with
+     * different keys get circuits of their own.
+     */
+    public Stream getStreamTo(String onion, int port, String isolationKey) throws OpenFailedException, InterruptedException, TimeoutException {
         final HiddenService hs = getHiddenServiceForOnion(onion);
         /*
          * A cached circuit can die between the check in getCircuitTo() and
@@ -56,7 +65,7 @@ public class HiddenServiceManager {
          * failure (the service refused the port, say) is reported as is.
          */
         for(int attempt = 0; ; attempt++) {
-            final HiddenServiceCircuit circuit = getCircuitTo(hs);
+            final HiddenServiceCircuit circuit = getCircuitTo(hs, isolationKey);
             try {
                 return circuit.openStream(port, HS_STREAM_TIMEOUT);
             } catch (StreamConnectFailedException e) {
@@ -87,9 +96,9 @@ public class HiddenServiceManager {
      * attempts), and with one lock for the whole manager a single onion that
      * does not answer held up the streams to every other onion service.
      */
-    private HiddenServiceCircuit getCircuitTo(HiddenService hs) throws OpenFailedException, InterruptedException {
+    private HiddenServiceCircuit getCircuitTo(HiddenService hs, String isolationKey) throws OpenFailedException, InterruptedException {
         synchronized(hs.getConnectLock()) {
-            final HiddenServiceCircuit existing = hs.getCircuit();
+            final HiddenServiceCircuit existing = hs.getCircuit(isolationKey);
             if(existing != null) {
                 return existing;
             }
@@ -97,7 +106,7 @@ public class HiddenServiceManager {
             if(c == null) {
                 throw new OpenFailedException("Failed to open circuit to "+ hs.getOnionAddressForLogging());
             }
-            hs.setCircuit(c);
+            hs.setCircuit(isolationKey, c);
             return c;
         }
     }

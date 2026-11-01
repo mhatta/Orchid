@@ -70,6 +70,7 @@ public class TorConfigImpl implements TorConfig {
     private List<Integer> firewallPorts;
     private boolean safeSocks;
     private String socksListenAddress;
+    private volatile String socksPassword;
     private boolean safeLogging;
     private boolean warnUnsafeSocks;
     private boolean clientRejectInternalAddress;
@@ -323,6 +324,16 @@ public class TorConfigImpl implements TorConfig {
     @Override
     public void setSocksListenAddress(String address) {
         socksListenAddress = address;
+    }
+
+    @Override
+    public String getSocksPassword() {
+        return socksPassword;
+    }
+
+    @Override
+    public void setSocksPassword(String password) {
+        socksPassword = password;
     }
 
     @Override

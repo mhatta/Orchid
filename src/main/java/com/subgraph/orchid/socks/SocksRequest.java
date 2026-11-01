@@ -2,6 +2,7 @@ package com.subgraph.orchid.socks;
 
 import java.io.IOException;
 import java.net.Socket;
+import java.security.MessageDigest;
 
 import com.subgraph.orchid.TorConfig;
 import com.subgraph.orchid.data.IPv4Address;
@@ -27,6 +28,9 @@ public abstract class SocksRequest {
 
     private long lastWarningTimestamp = 0;
 
+    /* See getIsolationKey(). */
+    private String isolationKey;
+
     protected SocksRequest(TorConfig config, Socket socket) {
         this.config = config;
         this.socket = socket;
@@ -38,6 +42,41 @@ public abstract class SocksRequest {
     abstract void sendError(boolean isUnsupportedCommand) throws SocksRequestException;
     abstract void sendSuccess() throws SocksRequestException;
     abstract void sendConnectionRefused() throws SocksRequestException;
+
+    /**
+     * The stream isolation key of this request: streams with different
+     * keys never share a circuit (Tor's IsolateSOCKSAuth, on by default).
+     * It is made from the SOCKS 5 user name and password, or the SOCKS 4
+     * user id, and is null when the client sent none.
+     */
+    public String getIsolationKey() {
+        return isolationKey;
+    }
+
+    /*
+     * The parts are hex encoded, and the encodings cannot contain ':', so
+     * that user "a:b" with password "c" and user "a" with password "b:c"
+     * give different keys.  (java.util.Base64 needs Android API level 26.)
+     */
+    protected void setIsolationKey(String kind, byte[]... parts) {
+        final StringBuilder sb = new StringBuilder(kind);
+        for(byte[] part: parts) {
+            sb.append(':');
+            for(byte b: part) {
+                sb.append(Character.forDigit((b >> 4) & 0xF, 16)).append(Character.forDigit(b & 0xF, 16));
+            }
+        }
+        isolationKey = sb.toString();
+    }
+
+    protected TorConfig getConfig() {
+        return config;
+    }
+
+    /* Compares without leaking, through the time taken, how much of a matched. */
+    protected static boolean constantTimeEquals(byte[] a, byte[] b) {
+        return MessageDigest.isEqual(a, b);
+    }
 
     public int getPort() {
         return port;

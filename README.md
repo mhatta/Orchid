@@ -68,6 +68,21 @@ To test Orchid, you can tell your web browser to use Orchid as a SOCKS5 proxy (t
 
 For example, with Mozilla Firefox, by default, DNS lookups are not sent over a configured SOCKS5 proxy. You can change this potentially de-anonymizing default configuration by going to the URL `about:config` and setting the property `network.proxy.socks_remote_dns` to `true` (this is already done in the Tor Browser).
 
+### Stream isolation and SOCKS authentication
+
+As in Tor (IsolateSOCKSAuth), streams that come with different SOCKS
+credentials never share a circuit, to an exit or to an onion service: the
+SOCKS 5 user name and password (RFC 1929), or the SOCKS 4 user id, select
+the circuits.  A browser can thus keep its tabs or sites apart by using a
+different user name for each.  Streams without credentials share their own
+circuits.
+
+`TorConfig#setSocksPassword()` makes the SOCKS port require a password: SOCKS 5
+clients must then authenticate with it (any user name), and SOCKS 4 clients
+are refused.  Applications that use Orchid as a library can isolate streams
+too, with `TorClient#openExitStreamTo(host, port, isolationKey)` or
+`TorClient#getSocketFactory(isolationKey)`.
+
 ## Using the dashboard
 
 Orchid also includes a "dashboard" feature to observe information about the internal state of Tor. To start the dashboard, set the following property when the JAR is run like:
@@ -116,6 +131,9 @@ support is still being completed and tested.  An app that embeds it should:
   destinations out of the log.
 * **Report network changes** with `client.notifyNetworkChanged()`, from a
   `ConnectivityManager.NetworkCallback`.
+* **Protect the SOCKS port**, if the app opens one: every app on the device
+  can connect to `127.0.0.1`.  Set a random password with
+  `TorConfig#setSocksPassword()` and give it only to the app's own HTTP client.
 
 ## Authors
 

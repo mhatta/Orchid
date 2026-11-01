@@ -43,6 +43,33 @@ public interface CircuitManager {
 	 * @return The status response result of attempting the open the exit connection.
 	 */
 	Stream openExitStreamTo(IPv4Address address, int port) throws InterruptedException, TimeoutException, OpenFailedException;
+
+	/**
+	 * Open a stream as {@link #openExitStreamTo(String, int)} does, on a
+	 * circuit that carries only streams with the same isolation key.
+	 * Streams with different keys (including null, the key of streams
+	 * opened without one) never share a circuit, to an exit or to an onion
+	 * service.  The SOCKS port uses the client's SOCKS credentials as the
+	 * key, as Tor's IsolateSOCKSAuth does.
+	 *
+	 * The default implementation supports only a null key.
+	 *
+	 * @param isolationKey any string; null for the shared, unisolated circuits
+	 */
+	default Stream openExitStreamTo(String hostname, int port, String isolationKey) throws InterruptedException, TimeoutException, OpenFailedException {
+		if(isolationKey != null) {
+			throw new OpenFailedException("Stream isolation is not supported by "+ getClass().getName());
+		}
+		return openExitStreamTo(hostname, port);
+	}
+
+	/** See {@link #openExitStreamTo(String, int, String)}. */
+	default Stream openExitStreamTo(IPv4Address address, int port, String isolationKey) throws InterruptedException, TimeoutException, OpenFailedException {
+		if(isolationKey != null) {
+			throw new OpenFailedException("Stream isolation is not supported by "+ getClass().getName());
+		}
+		return openExitStreamTo(address, port);
+	}
 	
 	
 	Stream openDirectoryStream(int purpose) throws InterruptedException, TimeoutException, OpenFailedException;

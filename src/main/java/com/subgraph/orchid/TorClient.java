@@ -159,6 +159,23 @@ public class TorClient {
         return circuitManager.openExitStreamTo(hostname, port);
     }
 
+    /**
+     * Open a stream on circuits used only by streams with the same
+     * isolation key.  See {@link CircuitManager#openExitStreamTo(String, int, String)}.
+     */
+    public Stream openExitStreamTo(String hostname, int port, String isolationKey) throws InterruptedException, TimeoutException, OpenFailedException {
+        ensureStarted();
+        return circuitManager.openExitStreamTo(hostname, port, isolationKey);
+    }
+
+    /**
+     * A SocketFactory whose sockets use circuits of their own, shared only
+     * with sockets of factories with the same isolation key.
+     */
+    public SocketFactory getSocketFactory(String isolationKey) {
+        return new OrchidSocketFactory(this, true, isolationKey);
+    }
+
     private synchronized void ensureStarted() {
         if(!isStarted) {
             throw new IllegalStateException("Must call start() first");

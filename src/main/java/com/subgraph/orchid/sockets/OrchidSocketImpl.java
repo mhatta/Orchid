@@ -22,12 +22,18 @@ import java.util.concurrent.locks.Lock;
 
 public class OrchidSocketImpl extends SocketImpl {
 	private final TorClient torClient;
+	private final String isolationKey;
 
 	private Lock streamLock = Threading.lock("stream");
 	private Stream stream;
 	
 	OrchidSocketImpl(TorClient torClient) {
+		this(torClient, null);
+	}
+
+	OrchidSocketImpl(TorClient torClient, String isolationKey) {
 		this.torClient = torClient;
+		this.isolationKey = isolationKey;
 		this.fd = new FileDescriptor();
 	}
 
@@ -98,7 +104,7 @@ public class OrchidSocketImpl extends SocketImpl {
 			throw new SocketException("Already connected");
 
 		try {
-			stream = torClient.openExitStreamTo(host, port);
+			stream = torClient.openExitStreamTo(host, port, isolationKey);
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
 			throw new SocketException("connect() interrupted");

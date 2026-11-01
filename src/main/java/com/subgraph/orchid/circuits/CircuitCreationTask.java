@@ -91,7 +91,7 @@ public class CircuitCreationTask implements Runnable {
     }
 
     private boolean attemptHandleStreamRequest(ExitCircuit c, StreamExitRequest request) {
-        if(c.canHandleExitTo(request)) {
+        if(c.canHandleExitTo(request) && claimIsolation(c, request)) {
             if(request.reserveRequest()) {
                 launchExitStreamTask(c, request);
             }
@@ -99,6 +99,15 @@ public class CircuitCreationTask implements Runnable {
             return true;
         }
         return false;
+    }
+
+    /*
+     * Claim the circuit for the request's isolation key.  Done before the
+     * request is reserved: two requests with different keys may both find
+     * a fresh circuit usable, and only the first may have it.
+     */
+    private static boolean claimIsolation(ExitCircuit c, StreamExitRequest request) {
+        return !(c instanceof ExitCircuitImpl) || ((ExitCircuitImpl) c).claimIsolation(request.getIsolationKey());
     }
 
     private void launchExitStreamTask(ExitCircuit circuit, StreamExitRequest exitRequest) {
@@ -265,7 +274,7 @@ public class CircuitCreationTask implements Runnable {
         final ExitCircuit ec = (ExitCircuit) circuit;
         final List<StreamExitRequest> pendingExitStreams = circuitManager.getPendingExitStreams();
         for(StreamExitRequest req: pendingExitStreams) {
-            if(ec.canHandleExitTo(req) && req.reserveRequest()) {
+            if(ec.canHandleExitTo(req) && claimIsolation(ec, req) && req.reserveRequest()) {
                 launchExitStreamTask(ec, req);
             }
         }

@@ -24,12 +24,20 @@ public class PendingExitStreams {
 	}
 	
 	Stream openExitStream(IPv4Address address, int port) throws InterruptedException, OpenFailedException {
-		final StreamExitRequest request = new StreamExitRequest(lock, address, port);
+		return openExitStream(address, port, null);
+	}
+
+	Stream openExitStream(String hostname, int port) throws InterruptedException, OpenFailedException {
+		return openExitStream(hostname, port, null);
+	}
+
+	Stream openExitStream(IPv4Address address, int port, String isolationKey) throws InterruptedException, OpenFailedException {
+		final StreamExitRequest request = new StreamExitRequest(lock, address, port, isolationKey);
 		return openExitStreamByRequest(request);
 	}
 	
-	Stream openExitStream(String hostname, int port) throws InterruptedException, OpenFailedException {
-		final StreamExitRequest request =  new StreamExitRequest(lock, hostname, port);
+	Stream openExitStream(String hostname, int port, String isolationKey) throws InterruptedException, OpenFailedException {
+		final StreamExitRequest request =  new StreamExitRequest(lock, hostname, port, isolationKey);
 		return openExitStreamByRequest(request);
 	}
 	

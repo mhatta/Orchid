@@ -1,5 +1,8 @@
 package com.subgraph.orchid.circuits.hs;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import com.subgraph.orchid.HiddenServiceCircuit;
 import com.subgraph.orchid.TorConfig;
 
@@ -7,7 +10,7 @@ import com.subgraph.orchid.TorConfig;
  * Client side state for one version 3 onion service: the identity key taken
  * from the onion address, the blinded key / subcredential derived for the
  * current time period, the last descriptor fetched and the rendezvous
- * circuit currently open to the service.
+ * circuits currently open to the service (one per stream isolation key).
  */
 public class HiddenService {
 
@@ -18,7 +21,8 @@ public class HiddenService {
 	private byte[] blindedPublicKey;
 	private byte[] subcredential;
 	private HSV3Descriptor descriptor;
-	private HiddenServiceCircuit circuit;
+	/* The rendezvous circuit for each stream isolation key; null is a valid key. */
+	private final Map<String, HiddenServiceCircuit> circuits = new HashMap<String, HiddenServiceCircuit>();
 	private final Object connectLock = new Object();
 
 	HiddenService(TorConfig config, HSV3Address address) {
@@ -105,20 +109,25 @@ public class HiddenService {
 	 * until Orchid was restarted.
 	 */
 	synchronized HiddenServiceCircuit getCircuit() {
+		return getCircuit(null);
+	}
+
+	/** The usable circuit for streams with this isolation key, or null. */
+	synchronized HiddenServiceCircuit getCircuit(String isolationKey) {
+		final HiddenServiceCircuit circuit = circuits.get(isolationKey);
 		if(circuit != null && (circuit.isMarkedForClose() || !circuit.isConnected())) {
-			circuit = null;
+			circuits.remove(isolationKey);
+			return null;
 		}
 		return circuit;
 	}
 
 	/**
-	 * Forget <code>dead</code> if it is still the current circuit, so that the
+	 * Forget <code>dead</code> if it is still a current circuit, so that the
 	 * next stream opens a new one.
 	 */
 	synchronized void discardCircuit(HiddenServiceCircuit dead) {
-		if(circuit == dead) {
-			circuit = null;
-		}
+		circuits.values().remove(dead);
 	}
 
 	/**
@@ -131,7 +140,11 @@ public class HiddenService {
 	}
 
 	synchronized void setCircuit(HiddenServiceCircuit circuit) {
-		this.circuit = circuit;
+		setCircuit(null, circuit);
+	}
+
+	synchronized void setCircuit(String isolationKey, HiddenServiceCircuit circuit) {
+		circuits.put(isolationKey, circuit);
 	}
 
 	@Override

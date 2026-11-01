@@ -8,6 +8,12 @@ import com.subgraph.orchid.TorException;
 public class Socks5Request extends SocksRequest {
 	final static int SOCKS5_VERSION = 5;
 	final static int SOCKS5_AUTH_NONE = 0;
+	final static int SOCKS5_AUTH_USERPASS = 2;
+	final static int SOCKS5_AUTH_NO_ACCEPTABLE = 0xFF;
+	/* RFC 1929 */
+	final static int USERPASS_VERSION = 1;
+	final static int USERPASS_SUCCESS = 0;
+	final static int USERPASS_FAILURE = 1;
 	final static int SOCKS5_COMMAND_CONNECT = 1;
 	final static int SOCKS5_COMMAND_RESOLV = 0xF0;
 	final static int SOCKS5_COMMAND_RESOLV_PTR = 0xF1;
@@ -96,25 +102,63 @@ public class Socks5Request extends SocksRequest {
 		socketWrite(response);
 	}
 	
+	/*
+	 * Username/password authentication (RFC 1929) is chosen whenever the
+	 * client offers it, as Tor does, so that the credentials can isolate
+	 * its streams.  "No authentication" is accepted only when no SOCKS
+	 * password is configured (TorConfig#setSocksPassword()).
+	 */
 	private boolean processAuthentication() throws SocksRequestException {
 		final int nmethods = readByte();
 		boolean foundAuthNone = false;
+		boolean foundUserPass = false;
 		for(int i = 0; i < nmethods; i++) {
 			final int meth = readByte();
-			if(meth == SOCKS5_AUTH_NONE)
+			if(meth == SOCKS5_AUTH_NONE) {
 				foundAuthNone = true;
+			} else if(meth == SOCKS5_AUTH_USERPASS) {
+				foundUserPass = true;
+			}
 		}
 
-		if(foundAuthNone) {
+		final String requiredPassword = getConfig().getSocksPassword();
+		if(foundUserPass) {
+			sendAuthenticationResponse(SOCKS5_AUTH_USERPASS);
+			return processUserPassAuthentication(requiredPassword);
+		} else if(foundAuthNone && requiredPassword == null) {
 			sendAuthenticationResponse(SOCKS5_AUTH_NONE);
 			return true;
 		} else {
-			sendAuthenticationResponse(0xFF);
+			sendAuthenticationResponse(SOCKS5_AUTH_NO_ACCEPTABLE);
 			return false;
 		}
 	}
-	
-	
+
+	private boolean processUserPassAuthentication(String requiredPassword) throws SocksRequestException {
+		if(readByte() != USERPASS_VERSION) {
+			throw new SocksRequestException("Bad username/password authentication version");
+		}
+		final byte[] username = readLengthPrefixed();
+		final byte[] password = readLengthPrefixed();
+		if(requiredPassword != null && !constantTimeEquals(password, requiredPassword.getBytes(java.nio.charset.StandardCharsets.UTF_8))) {
+			sendUserPassResponse(USERPASS_FAILURE);
+			return false;
+		}
+		sendUserPassResponse(USERPASS_SUCCESS);
+		setIsolationKey("socks5", username, password);
+		return true;
+	}
+
+	private byte[] readLengthPrefixed() throws SocksRequestException {
+		final byte[] data = new byte[readByte()];
+		readAll(data);
+		return data;
+	}
+
+	private void sendUserPassResponse(int status) throws SocksRequestException {
+		socketWrite(new byte[] { (byte) USERPASS_VERSION, (byte) status });
+	}
+
 	private void sendAuthenticationResponse(int method) throws SocksRequestException {
 		final byte[] response = new byte[2];
 		response[0] = SOCKS5_VERSION;
