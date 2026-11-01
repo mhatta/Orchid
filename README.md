@@ -106,6 +106,28 @@ config.addOnionClientAuth("xxxx...xxxx.onion", "<52 character base32 private key
 
 ## How to use as a library
 
+Releases from 2.4.0 on are on Maven Central:
+
+```groovy
+dependencies {
+    implementation 'org.mhatta:orchid:2.4.0'
+}
+```
+
+```xml
+<dependency>
+  <groupId>org.mhatta</groupId>
+  <artifactId>orchid</artifactId>
+  <version>2.4.0</version>
+</dependency>
+```
+
+The jar has no dependencies and runs on Java 8 and later.  Older forks of
+Orchid, such as `org.bitcoinj:orchid`, contain the same packages
+(`com.subgraph.orchid`): do not put both on the classpath.  Exclude the old
+one if another dependency brings it in.  Gradle detects the conflict by
+itself; with Maven, add an `<exclusion>` for `org.bitcoinj:orchid`.
+
 The Orchid Tor client exposes a SocketFactory that can be used within a JVM application. More detailed documentation and code examples are coming very soon.  [This Stack Overflow discussion](https://stackoverflow.com/questions/29171643/java-tor-lib-how-to-setup-orchid-tor-lib-with-java) might be helpful for now.
 
 ## Using Orchid on Android

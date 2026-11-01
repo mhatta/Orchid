@@ -1,5 +1,7 @@
 plugins {
     id 'java'
+    id 'maven-publish'
+    id 'signing'
 }
 
 // Orchid targets Java 8 so that it keeps working as a library on older JVMs
@@ -92,13 +94,15 @@ test {
     useJUnit()
     testLogging {
         events 'failed'
-        exceptionFormat 'full'
+        exceptionFormat = 'full'
     }
 }
 
 jar {
     manifest {
-        attributes 'Main-Class': 'com.subgraph.orchid.TorClient'
+        attributes 'Main-Class': 'com.subgraph.orchid.TorClient',
+                   // A stable name for applications that use Java modules.
+                   'Automatic-Module-Name': 'com.subgraph.orchid'
     }
 }
 
@@ -206,3 +210,154 @@ processResources {
 // Maven Central requires a javadoc jar: keep the javadoc building, so that
 // "gradle build" (and CI) fails on a doclint error rather than the release.
 check.dependsOn javadoc
+
+/*
+ * Reproducible builds: the same commit built with the same JDK gives
+ * byte-for-byte identical jars, whoever builds it and whenever.  Archive
+ * entries get fixed timestamps, a fixed order and fixed permissions, and
+ * the javadoc carries no generation date.  The class files still depend on
+ * the javac version, so compare builds made with the same JDK major
+ * version (the release jars are built with JDK 21).
+ */
+tasks.withType(AbstractArchiveTask).configureEach {
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+    dirPermissions { unix('rwxr-xr-x') }
+    filePermissions { unix('rw-r--r--') }
+}
+
+javadoc {
+    options.addBooleanOption('notimestamp', true)
+    options.encoding = 'UTF-8'
+    // Errors still fail the build; leave out the hundreds of "no comment" warnings.
+    options.addStringOption('Xdoclint:all,-missing', '-quiet')
+}
+
+/*
+ * Maven Central (https://central.sonatype.com), as org.mhatta:orchid, with
+ * Gradle's own maven-publish and signing plugins only.  The Central Portal
+ * takes a bundle, a zip of the Maven repository layout with the signatures
+ * and checksums:
+ *
+ *   git checkout v2.4.0
+ *   ./gradlew clean centralBundle
+ *   tools/central-upload.sh build/distributions/orchid-2.4.0-bundle.zip
+ *
+ * Signing uses the local gpg (and gpg-agent), with the key named by the
+ * Gradle property signing.gnupg.keyName (~/.gradle/gradle.properties), so
+ * the private key never leaves the keyring.  See doc/RELEASING.md.
+ */
+java {
+    withSourcesJar()
+    withJavadocJar()
+}
+
+/*
+ * The forks of Orchid published by bitcoinj (org.bitcoinj:orchid) contain
+ * the same packages (com.subgraph.orchid).  Declaring their capability
+ * makes Gradle refuse a classpath with both, instead of picking classes of
+ * one or the other at random.  Maven does not read this; see the README.
+ */
+['apiElements', 'runtimeElements'].each { name ->
+    configurations.named(name) {
+        outgoing {
+            capability("org.mhatta:orchid:${project.version}")
+            capability("org.bitcoinj:orchid:${project.version}")
+        }
+    }
+}
+
+def isReleaseVersion = { -> project.version.toString() ==~ /[0-9]+\.[0-9]+\.[0-9]+/ }
+
+publishing {
+    publications {
+        maven(MavenPublication) {
+            groupId = 'org.mhatta'
+            artifactId = 'orchid'
+            from components.java
+            pom {
+                name = 'Orchid'
+                description = 'A Tor client in pure Java, with v3 onion services; the maintained continuation of Subgraph Orchid.'
+                url = 'https://github.com/mhatta/Orchid'
+                inceptionYear = '2009'
+                licenses {
+                    license {
+                        name = 'BSD-3-Clause'
+                        url = 'https://opensource.org/licenses/BSD-3-Clause'
+                        distribution = 'repo'
+                    }
+                }
+                developers {
+                    developer {
+                        id = 'mhatta'
+                        name = 'Masayuki Hatta'
+                        email = 'mhatta@mhatta.org'
+                    }
+                    developer {
+                        name = 'Bruce Leidl'
+                        organization = 'Subgraph'
+                        organizationUrl = 'https://subgraph.com'
+                    }
+                }
+                scm {
+                    url = 'https://github.com/mhatta/Orchid'
+                    connection = 'scm:git:https://github.com/mhatta/Orchid.git'
+                    developerConnection = 'scm:git:ssh://git@github.com/mhatta/Orchid.git'
+                    tag = "v${project.version}"
+                }
+                issueManagement {
+                    system = 'GitHub'
+                    url = 'https://github.com/mhatta/Orchid/issues'
+                }
+            }
+        }
+    }
+    repositories {
+        // The bundle for the Central Portal is made from this directory.
+        maven {
+            name = 'staging'
+            url = layout.buildDirectory.dir('staging-deploy')
+        }
+    }
+}
+
+signing {
+    useGpgCmd()
+    sign publishing.publications.maven
+}
+
+def centralRequested = { -> gradle.taskGraph.hasTask(':centralBundle') }
+
+// A bundle for Maven Central only from a release tag with no local changes.
+tasks.register('checkReleaseVersion') {
+    doLast {
+        if(centralRequested() && !isReleaseVersion()) {
+            throw new GradleException("Not a release version: ${project.version}.  Check out a release tag (git checkout v<version>) with no local changes.")
+        }
+    }
+}
+
+// Sign only for Maven Central, so that "gradle build" (and publishToMavenLocal) needs no key.
+tasks.withType(Sign).configureEach {
+    dependsOn 'checkReleaseVersion'
+    onlyIf { centralRequested() }
+}
+
+tasks.register('cleanStaging', Delete) {
+    delete layout.buildDirectory.dir('staging-deploy')
+}
+
+tasks.named('publishMavenPublicationToStagingRepository') {
+    dependsOn 'cleanStaging', 'checkReleaseVersion'
+}
+
+tasks.register('centralBundle', Zip) {
+    group = 'publishing'
+    description = 'Makes the bundle to upload to the Maven Central Portal (build/distributions/orchid-<version>-bundle.zip).'
+    dependsOn 'publishMavenPublicationToStagingRepository'
+    archiveFileName = "orchid-${project.version}-bundle.zip"
+    destinationDirectory = layout.buildDirectory.dir('distributions')
+    from layout.buildDirectory.dir('staging-deploy')
+    // maven-metadata.xml is not part of a Central deployment.
+    exclude '**/maven-metadata.xml*'
+}
