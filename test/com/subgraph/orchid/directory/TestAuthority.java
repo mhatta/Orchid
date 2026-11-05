@@ -47,6 +47,11 @@ public class TestAuthority {
 	 * certifyingKey, which need not be this authority's identity key.
 	 */
 	public String certificate(HexDigest declaredFingerprint, TorPrivateKey signingKey, int publishedHoursAgo, TorPrivateKey certifyingKey) {
+		return certificate(declaredFingerprint, signingKey, publishedHoursAgo, certifyingKey, true);
+	}
+
+	/** A certificate with or without the dir-key-crosscert. */
+	public String certificate(HexDigest declaredFingerprint, TorPrivateKey signingKey, int publishedHoursAgo, TorPrivateKey certifyingKey, boolean withCrossCert) {
 		final Date now = new Date();
 		final StringBuilder sb = new StringBuilder();
 		sb.append("dir-key-certificate-version 3\n");
@@ -56,8 +61,10 @@ public class TestAuthority {
 		sb.append("dir-key-expires ").append(format(new Date(now.getTime() + 90 * 24 * HOUR))).append('\n');
 		sb.append("dir-identity-key\n").append(pem(identityKey.getPublicKey()));
 		sb.append("dir-signing-key\n").append(pem(signingKey.getPublicKey()));
-		sb.append("dir-key-crosscert\n");
-		sb.append(object("ID SIGNATURE", sign(signingKey.getRSAPrivateKey(), identityKey.getPublicKey().getFingerprint().getRawBytes())));
+		if(withCrossCert) {
+			sb.append("dir-key-crosscert\n");
+			sb.append(object("ID SIGNATURE", sign(signingKey.getRSAPrivateKey(), identityKey.getPublicKey().getFingerprint().getRawBytes())));
+		}
 		sb.append("dir-key-certification\n");
 		sb.append(object("SIGNATURE", sign(certifyingKey.getRSAPrivateKey(), sha1(sb.toString()))));
 		return sb.toString();

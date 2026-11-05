@@ -57,4 +57,13 @@ public class KeyCertificateParserTest {
 		final BasicDocumentParsingResult<KeyCertificate> result = TestAuthority.parseCertificates(text);
 		assertEquals(2, result.getParsedDocuments().size());
 	}
+
+	@Test
+	public void testCertificateWithoutCrossCertificateIsRejected() {
+		final TestAuthority authority = new TestAuthority();
+		final String text = authority.certificate(authority.getFingerprint(), authority.newSigningKey(), 1, authority.getIdentityKey(), false);
+		final BasicDocumentParsingResult<KeyCertificate> result = TestAuthority.parseCertificates(text);
+		assertTrue(result.getParsedDocuments().isEmpty());
+		assertTrue(result.isInvalid());
+	}
 }

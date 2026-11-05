@@ -47,10 +47,19 @@ public class KeyCertificateParser implements DocumentParser<KeyCertificate> {
 			processKeyword(keyword);
 	}
 	
+	/*
+	 * dir-spec 3.1: dir-key-crosscert is required ("exactly once").  The
+	 * signing key signs the identity key's digest with it, which shows that
+	 * the holder of the signing key agreed to be certified by this
+	 * authority.  It used to be checked only when present.
+	 */
+	private boolean hasCrossCertificate;
+
 	private void startNewCertificate() {
 		fieldParser.resetRawDocument();
 		fieldParser.startSignedEntity();
 		currentCertificate = new KeyCertificateImpl();
+		hasCrossCertificate = false;
 	}
 	
 	public boolean parse(DocumentParsingResultHandler<KeyCertificate> resultHandler) {
@@ -134,6 +143,7 @@ public class KeyCertificateParser implements DocumentParser<KeyCertificate> {
 		}
 		if(!verified)
 			throw new TorParsingException("Cross signature on certificate failed.");
+		hasCrossCertificate = true;
 	}
 
 	private boolean verifyCurrentCertificate(TorSignature signature) {
@@ -150,6 +160,11 @@ public class KeyCertificateParser implements DocumentParser<KeyCertificate> {
 		if(identityKey == null || fingerprint == null || !identityKey.getFingerprint().equals(fingerprint)) {
 			resultHandler.documentInvalid(currentCertificate, "Identity key does not match fingerprint");
 			fieldParser.logWarn("Identity key does not match the fingerprint of certificate with fingerprint: "+ fingerprint);
+			return false;
+		}
+		if(!hasCrossCertificate) {
+			resultHandler.documentInvalid(currentCertificate, "No dir-key-crosscert");
+			fieldParser.logWarn("No dir-key-crosscert in certificate with fingerprint: "+ fingerprint);
 			return false;
 		}
 		boolean verified;
