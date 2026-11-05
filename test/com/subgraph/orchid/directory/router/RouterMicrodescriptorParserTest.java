@@ -22,7 +22,7 @@ import com.subgraph.orchid.encoders.Hex;
 /**
  * Microdescriptors in the format produced by current consensus methods:
  * no TAP key object after "onion-key", "id ed25519" / "id rsa1024" lines,
- * items unknown to Orchid ("family-ids", "p6"), and extra trailing
+ * "family-ids" (Happy Families), items unknown to Orchid ("p6"), and extra trailing
  * arguments, which dir-spec requires parsers to accept.
  */
 public class RouterMicrodescriptorParserTest {
@@ -87,5 +87,18 @@ public class RouterMicrodescriptorParserTest {
 		final List<RouterMicrodescriptor> mds = parse(microdescriptor(0x30, " some future argument"));
 		assertEquals(1, mds.size());
 		assertArrayEquals(filled(32, 0x30), mds.get(0).getNTorOnionKey());
+	}
+
+	@Test
+	public void testFamilyIds() {
+		final String md = "onion-key\n"
+				+ "ntor-onion-key " + b64NoPad(filled(32, 0x40)) + "\n"
+				+ "family $0123456789ABCDEF0123456789ABCDEF01234567\n"
+				+ "family-ids ed25519:AAAA ed25519:BBBB\n"
+				+ "id ed25519 " + b64NoPad(filled(32, 0x41)) + "\n";
+		final RouterMicrodescriptor parsed = parse(md).get(0);
+		assertEquals(new java.util.HashSet<String>(Arrays.asList("ed25519:AAAA", "ed25519:BBBB")), parsed.getFamilyIds());
+		assertEquals(java.util.Collections.singleton("$0123456789ABCDEF0123456789ABCDEF01234567"), parsed.getFamilyMembers());
+		assertTrue(parse(microdescriptor(0x50, "")).get(0).getFamilyIds().contains("ed25519:" + b64NoPad(filled(32, 0x51))));
 	}
 }

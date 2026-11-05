@@ -5,6 +5,7 @@ public enum RouterMicrodescriptorKeyword {
 	NTOR_ONION_KEY("ntor-onion-key", 1),
 	A("a", 1),
 	FAMILY("family"),
+	FAMILY_IDS("family-ids"),
 	P("p", 2),
 	ID("id", 2),
 	UNKNOWN_KEYWORD("KEYWORD NOT FOUNE");

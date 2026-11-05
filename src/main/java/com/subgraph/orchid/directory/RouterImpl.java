@@ -227,6 +227,16 @@ public class RouterImpl implements Router {
 			return Collections.emptySet();
 		}
 	}
+
+	@Override
+	public Set<String> getFamilyIds() {
+		refreshDescriptor();
+		if(descriptor != null) {
+			return descriptor.getFamilyIds();
+		} else {
+			return Collections.emptySet();
+		}
+	}
 	
 	public int getAverageBandwidth() {
 		final RouterDescriptor rd = downcastDescriptor();

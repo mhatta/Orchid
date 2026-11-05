@@ -50,6 +50,18 @@ public interface Descriptor extends Document {
 	 */
 	int getRouterPort();
 	Set<String> getFamilyMembers();
+
+	/**
+	 * The family IDs of this router (Happy Families, proposal 321), as listed
+	 * in the <code>family-ids</code> line of a microdescriptor.  Full router
+	 * descriptors give their family as a family certificate instead, which
+	 * Orchid does not verify; they return an empty set.
+	 *
+	 * @since 2.5.0
+	 */
+	default Set<String> getFamilyIds() {
+		return java.util.Collections.emptySet();
+	}
 	
 	/**
 	 * Return true if the exit policy of this router permits connections

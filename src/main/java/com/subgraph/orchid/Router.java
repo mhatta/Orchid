@@ -34,6 +34,20 @@ public interface Router {
 	int getMeasuredBandwidth();
 
 	Set<String> getFamilyMembers();
+
+	/**
+	 * The family IDs of this router (Happy Families, proposal 321): the
+	 * strings of the <code>family-ids</code> line of its microdescriptor,
+	 * such as <code>ed25519:</code> followed by the family's public key.
+	 * Routers that share a family ID are in the same family.
+	 *
+	 * @return The family IDs, or an empty set if none are known.
+	 * @since 2.5.0
+	 */
+	default Set<String> getFamilyIds() {
+		return java.util.Collections.emptySet();
+	}
+
 	int getAverageBandwidth();
 	int getBurstBandwidth();
 	int getObservedBandwidth();

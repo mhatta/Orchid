@@ -83,6 +83,12 @@ public class RouterMicrodescriptorParser implements DocumentParser<RouterMicrode
 				currentDescriptor.addFamilyMember(fieldParser.parseString());
 			}
 			break;
+
+		case FAMILY_IDS:
+			while(fieldParser.argumentsRemaining() > 0 && currentDescriptor != null) {
+				currentDescriptor.addFamilyId(fieldParser.parseString());
+			}
+			break;
 		
 		case P:
 			processP();

@@ -20,6 +20,7 @@ public class RouterMicrodescriptorImpl implements RouterMicrodescriptor {
 	private byte[] ntorOnionKey;
 	private byte[] ed25519Identity;
 	private Set<String> familyMembers = Collections.emptySet();
+	private Set<String> familyIds = Collections.emptySet();
 	private ExitPorts acceptPorts;
 	private ExitPorts rejectPorts;
 	private String rawDocumentData;
@@ -52,6 +53,13 @@ public class RouterMicrodescriptorImpl implements RouterMicrodescriptor {
 			familyMembers = new HashSet<String>();
 		}
 		familyMembers.add(familyMember);
+	}
+
+	public void addFamilyId(String familyId) {
+		if(familyIds.isEmpty()) {
+			familyIds = new HashSet<String>();
+		}
+		familyIds.add(familyId);
 	}
 
 	public void addAcceptPorts(String portlist) {
@@ -109,6 +117,11 @@ public class RouterMicrodescriptorImpl implements RouterMicrodescriptor {
 
 	public Set<String> getFamilyMembers() {
 		return familyMembers;
+	}
+
+	@Override
+	public Set<String> getFamilyIds() {
+		return familyIds;
 	}
 
 	public boolean exitPolicyAccepts(IPv4Address address, int port) {

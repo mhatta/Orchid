@@ -168,6 +168,15 @@ public class BridgeRouterImpl implements BridgeRouter {
 		}
 	}
 
+	@Override
+	public Set<String> getFamilyIds() {
+		if(descriptor != null) {
+			return descriptor.getFamilyIds();
+		} else {
+			return Collections.emptySet();
+		}
+	}
+
 	public int getAverageBandwidth() {
 		return 0;
 	}

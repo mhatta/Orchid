@@ -132,7 +132,7 @@ public class CircuitPathChooser {
 	private void excludeChosenRouterAndRelated(Router router, Set<Router> excludedRouters) {
 		excludedRouters.add(router);
 		for(Router r: directory.getAllRouters()) {
-			if(areInSameSlash16(router, r)) {
+			if(areInSameSlash16(router, r) || shareFamilyId(router, r)) {
 				excludedRouters.add(r);
 			}
 		}
@@ -147,8 +147,47 @@ public class CircuitPathChooser {
 			}
 		}
 	}
+
+	/**
+	 * Whether two routers must not be on the same circuit: the same router,
+	 * routers in the same family, or routers in the same /16 network, as in
+	 * Tor (nodes_in_same_family()).
+	 *
+	 * Two routers are in the same family if each lists the other in its
+	 * <code>family</code> line, or, with Happy Families (proposal 321), if
+	 * they share a family ID.  Tor 0.4.9 relays prove their family with a
+	 * family key, and the <code>family</code> lines are to be dropped once
+	 * enough clients understand family IDs; without them, two relays of
+	 * one operator would no longer be kept apart.
+	 */
+	public boolean areRelated(Router r1, Router r2) {
+		if(r1 == null || r2 == null) {
+			return false;
+		}
+		if(r1.equals(r2) || areInSameSlash16(r1, r2) || shareFamilyId(r1, r2)) {
+			return true;
+		}
+		return isFamilyMember(r1.getFamilyMembers(), r2) && isFamilyMember(r2.getFamilyMembers(), r1);
+	}
+
+	static boolean shareFamilyId(Router r1, Router r2) {
+		final Set<String> ids1 = r1.getFamilyIds();
+		final Set<String> ids2 = r2.getFamilyIds();
+		if(ids1 == null || ids2 == null || ids1.isEmpty() || ids2.isEmpty()) {
+			return false;
+		}
+		for(String id: ids1) {
+			if(ids2.contains(id)) {
+				return true;
+			}
+		}
+		return false;
+	}
 	
 	private boolean isFamilyMember(Collection<String> familyMemberNames, Router r) {
+		if(familyMemberNames == null) {
+			return false;
+		}
 		for(String s: familyMemberNames) {
 			Router member = directory.getRouterByName(s);
 			if(member != null && member.equals(r)) {
@@ -162,6 +201,9 @@ public class CircuitPathChooser {
 	private boolean areInSameSlash16(Router r1, Router r2) {
 		final IPv4Address a1 = r1.getAddress();
 		final IPv4Address a2 = r2.getAddress();
+		if(a1 == null || a2 == null) {
+			return false;
+		}
 		final int mask = 0xFFFF0000;
 		return (a1.getAddressData() & mask) == (a2.getAddressData() & mask);
 	}
