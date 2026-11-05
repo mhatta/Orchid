@@ -53,6 +53,15 @@ public class DataDirectoryTest {
 	}
 
 	@Test
+	public void testExistingDirectoryIsRestrictedToOwner() throws IOException {
+		final File dir = tmp.newFolder("open");
+		Assume.assumeTrue(Files.getFileStore(dir.toPath()).supportsFileAttributeView("posix"));
+		Files.setPosixFilePermissions(dir.toPath(), PosixFilePermissions.fromString("rwxr-xr-x"));
+		DataDirectory.prepare(dir);
+		assertEquals(PosixFilePermissions.fromString("rwx------"), Files.getPosixFilePermissions(dir.toPath()));
+	}
+
+	@Test
 	public void testCannotCreate() throws IOException {
 		// A path below a regular file cannot be created.
 		final File file = tmp.newFile("plain");

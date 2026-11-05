@@ -21,7 +21,8 @@ public final class DataDirectory {
 
 	/**
 	 * Make sure that <code>directory</code> exists, is a directory and is
-	 * writable, creating it (readable by its owner only) if it is missing.
+	 * writable, creating it if it is missing, and make it accessible to its
+	 * owner only.
 	 *
 	 * @throws TorException with an explanation if it is not set or not usable.
 	 */
@@ -36,7 +37,6 @@ public final class DataDirectory {
 				throw new TorException("Cannot create the data directory "+ directory
 						+ ".  Set a writable one with TorConfig#setDataDirectory().");
 			}
-			restrictToOwner(directory);
 		}
 		if(!directory.isDirectory()) {
 			throw new TorException("The data directory "+ directory +" is not a directory");
@@ -44,6 +44,12 @@ public final class DataDirectory {
 		if(!directory.canWrite()) {
 			throw new TorException("The data directory "+ directory +" is not writable");
 		}
+		/*
+		 * Also when the directory already exists: it may have been created by
+		 * an earlier version, which did not restrict it, or by hand.  Tor
+		 * fixes the permissions of its data directory in the same way.
+		 */
+		restrictToOwner(directory);
 	}
 
 	/*
