@@ -111,6 +111,10 @@ public class HSV3TestServiceEncoder {
 	/* -------------------------------------------------------------- certificates */
 
 	public byte[] encodeCert(int certType, byte[] certifiedKey, Ed25519TestSigner signer, long expirationHours) {
+		return encodeCert(certType, certifiedKey, signer, expirationHours, Ed25519Certificate.KEY_TYPE_ED25519);
+	}
+
+	public byte[] encodeCert(int certType, byte[] certifiedKey, Ed25519TestSigner signer, long expirationHours, int certifiedKeyType) {
 		final ByteArrayOutputStream out = new ByteArrayOutputStream();
 		out.write(1);
 		out.write(certType);
@@ -118,7 +122,7 @@ public class HSV3TestServiceEncoder {
 		out.write((int) (expirationHours >> 16) & 0xFF);
 		out.write((int) (expirationHours >> 8) & 0xFF);
 		out.write((int) expirationHours & 0xFF);
-		out.write(Ed25519Certificate.KEY_TYPE_ED25519);
+		out.write(certifiedKeyType);
 		out.write(certifiedKey, 0, 32);
 		out.write(1); // N_EXTENSIONS
 		out.write(0); out.write(32); // ExtLength

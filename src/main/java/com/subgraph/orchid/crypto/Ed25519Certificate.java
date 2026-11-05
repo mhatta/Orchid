@@ -163,12 +163,20 @@ public final class Ed25519Certificate {
 
 	/**
 	 * Convenience check used by the v3 descriptor parser: the certificate must
-	 * have the expected type, carry a signing-key extension equal to
-	 * <code>expectedSigningKey</code> (when non-null), verify under that key and
-	 * not be expired.
+	 * have the expected type, certify an Ed25519 key, carry a signing-key
+	 * extension equal to <code>expectedSigningKey</code> (when non-null),
+	 * verify under that key and not be expired.
+	 *
+	 * The certified key type used to be ignored.  The certificates checked
+	 * here all certify Ed25519 keys; a certificate for a key of another type
+	 * (an RSA or X.509 digest, cert-spec section 2.1) is the wrong one, even
+	 * if its signature is good.
 	 */
 	public boolean isValid(int expectedCertType, byte[] expectedSigningKey, long nowSeconds) {
 		if(certType != expectedCertType) {
+			return false;
+		}
+		if(certifiedKeyType != KEY_TYPE_ED25519) {
 			return false;
 		}
 		if(signingKey == null) {
