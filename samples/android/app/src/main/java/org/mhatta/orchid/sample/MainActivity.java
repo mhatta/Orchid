@@ -1,25 +1,17 @@
 package org.mhatta.orchid.sample;
 
 import java.io.IOException;
-import java.net.InetAddress;
-import java.util.Collections;
-import java.util.List;
 
 import android.app.Activity;
 import android.os.Bundle;
+import android.util.Log;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
-import com.subgraph.orchid.sockets.OrchidSocketFactory;
-
-import okhttp3.Dns;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.Response;
-
 /**
  * Starts Orchid and, once it is ready, fetches
- * https://check.torproject.org/api/ip through it with OkHttp.
+ * https://check.torproject.org/api/ip through it with OkHttp.  The result
+ * is shown and logged (logcat tag OrchidSample).
  */
 public class MainActivity extends Activity implements OrchidHolder.Listener {
     private TextView text;
@@ -70,31 +62,13 @@ public class MainActivity extends Activity implements OrchidHolder.Listener {
         });
     }
 
-    /*
-     * OkHttp through Orchid, without DNS leaks:
-     *
-     * - socketFactory: the connections go through Tor.  The isolation key
-     *   keeps this app's circuits apart from streams with other keys.
-     * - dns: OkHttp resolves host names itself before it connects, which
-     *   would ask the device's DNS.  unresolvedAddress() returns a
-     *   placeholder instead, and the exit relay resolves the name.
-     *
-     * Do not use OkHttp's proxy(new Proxy(SOCKS, ...)) on Android: the
-     * platform's SOCKS client speaks SOCKS 4 only, without host names.
-     */
     private void fetch() {
-        final OkHttpClient http = new OkHttpClient.Builder()
-                .socketFactory(orchid.client().getSocketFactory("orchid-sample"))
-                .dns(new Dns() {
-                    public List<InetAddress> lookup(String hostname) {
-                        return Collections.singletonList(OrchidSocketFactory.unresolvedAddress(hostname));
-                    }
-                })
-                .build();
-        final Request request = new Request.Builder().url("https://check.torproject.org/api/ip").build();
-        try (Response response = http.newCall(request).execute()) {
-            append("check.torproject.org: " + response.code() + " " + response.body().string());
+        try {
+            final String result = TorCheck.fetch(orchid.client());
+            Log.i(TorCheck.TAG, "check.torproject.org: " + result);
+            append("check.torproject.org: " + result);
         } catch(IOException e) {
+            Log.w(TorCheck.TAG, "Request failed", e);
             append("Request failed: " + e);
         }
     }

@@ -19,7 +19,7 @@ through Tor with OkHttp.  It shows what an app that embeds Orchid has to do:
   `OrchidSocketFactory.unresolvedAddress(host)` so that names are resolved by
   the exit relay.  The SOCKS port is not used at all.
 
-## Building
+## Building and running
 
 The sample builds Orchid from this checkout (see `settings.gradle`; remove
 the `includeBuild` block to use `org.mhatta:orchid` from Maven Central).
@@ -30,7 +30,17 @@ or later:
 cd samples/android
 ../../gradlew assembleDebug
 adb install app/build/outputs/apk/debug/app-debug.apk
-adb logcat -s Orchid
+adb logcat -s Orchid OrchidSample
 ```
 
-The sample has not been built or run in CI.
+The app shows the bootstrap progress and then the answer of
+check.torproject.org, which must contain `"IsTor":true`.  The same check
+runs as an instrumented test, on a device or a running emulator:
+
+```sh
+../../gradlew connectedDebugAndroidTest
+```
+
+The test waits up to five minutes for Orchid to bootstrap.  The
+[Android workflow](../../.github/workflows/android.yml) runs it on
+emulators with API levels 24 and 35.

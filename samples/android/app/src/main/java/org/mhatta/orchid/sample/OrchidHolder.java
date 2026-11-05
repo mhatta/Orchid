@@ -43,6 +43,7 @@ final class OrchidHolder {
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final CopyOnWriteArrayList<Listener> listeners = new CopyOnWriteArrayList<Listener>();
     private volatile boolean ready;
+    private volatile Throwable failure;
 
     static synchronized OrchidHolder get(Context context) {
         if(instance == null) {
@@ -91,6 +92,7 @@ final class OrchidHolder {
                 try {
                     client.start();
                 } catch(RuntimeException e) {
+                    failure = e;
                     for(Listener l: listeners) {
                         l.failed(e);
                     }
@@ -131,10 +133,13 @@ final class OrchidHolder {
         return ready;
     }
 
+    /** Add a listener; it is told at once if Orchid is already ready, or has failed. */
     void addListener(Listener l) {
         listeners.add(l);
         if(ready) {
             l.ready();
+        } else if(failure != null) {
+            l.failed(failure);
         }
     }
 
