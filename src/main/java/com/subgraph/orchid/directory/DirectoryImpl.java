@@ -29,6 +29,7 @@ import com.subgraph.orchid.TorConfig.AutoBoolValue;
 import com.subgraph.orchid.TorException;
 import com.subgraph.orchid.crypto.TorRandom;
 import com.subgraph.orchid.data.HexDigest;
+import com.subgraph.orchid.data.Timestamp;
 import com.subgraph.orchid.data.RandomSet;
 import com.subgraph.orchid.directory.parsing.DocumentParser;
 import com.subgraph.orchid.directory.parsing.DocumentParserFactory;
@@ -346,9 +347,46 @@ public class DirectoryImpl implements Directory {
         needRecalculateMinimumRouterInfo = true;
     }
 
+    /*
+     * How far outside its validity period a consensus may still be used, as
+     * in Tor (REASONABLY_LIVE_TIME): a client whose consensus has just
+     * expired, or whose clock is a little off, keeps working while it
+     * fetches a new one.
+     */
+    final static long REASONABLY_LIVE_TIME = 24 * 60 * 60 * 1000L;
+
+    /**
+     * Whether a consensus is recent enough to use at time <code>now</code>:
+     * no more than {@link #REASONABLY_LIVE_TIME} after its valid-until time
+     * and no more than that before its valid-after time.
+     */
+    static boolean isReasonablyLive(ConsensusDocument consensus, long now) {
+        final Timestamp validAfter = consensus.getValidAfterTime();
+        final Timestamp validUntil = consensus.getValidUntilTime();
+        if(validAfter == null || validUntil == null) {
+            return false;
+        }
+        return now >= validAfter.getTime() - REASONABLY_LIVE_TIME && now <= validUntil.getTime() + REASONABLY_LIVE_TIME;
+    }
+
     @Override
     public synchronized void addConsensusDocument(ConsensusDocument consensus, boolean fromCache) {
         if(consensus.equals(currentConsensus)){
+            return;
+        }
+
+        /*
+         * A consensus that expired long ago, or that is not valid for another
+         * day, used to be accepted as long as its signatures were good.  An
+         * old consensus lists relays that may be gone, and keys and flags
+         * that have changed, and it can be replayed by anyone who kept a
+         * copy: whoever serves directory documents could pin a client to the
+         * network of an earlier day.
+         */
+        if(!isReasonablyLive(consensus, System.currentTimeMillis())) {
+            final String which = fromCache ? "Cached consensus" : "Consensus document";
+            logger.warn(which +" valid from "+ consensus.getValidAfterTime() +" until "+ consensus.getValidUntilTime()
+                    +" is too old or too new to use, discarding (is the system clock right?)");
             return;
         }
 
