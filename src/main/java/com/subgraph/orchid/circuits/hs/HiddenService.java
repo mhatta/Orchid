@@ -147,6 +147,27 @@ public class HiddenService {
 		circuits.put(isolationKey, circuit);
 	}
 
+	/**
+	 * Forget the circuits that are closed, and return the number of
+	 * isolation keys (other than null) that still have one.  The circuits
+	 * of keys that were no longer used used to stay in the table for as long
+	 * as Orchid ran.
+	 */
+	synchronized int pruneAndCountIsolationKeys() {
+		int n = 0;
+		final java.util.Iterator<Map.Entry<String, HiddenServiceCircuit>> it = circuits.entrySet().iterator();
+		while(it.hasNext()) {
+			final Map.Entry<String, HiddenServiceCircuit> e = it.next();
+			final HiddenServiceCircuit c = e.getValue();
+			if(c == null || c.isMarkedForClose() || !c.isConnected()) {
+				it.remove();
+			} else if(e.getKey() != null) {
+				n++;
+			}
+		}
+		return n;
+	}
+
 	@Override
 	public int hashCode() {
 		return address.hashCode();

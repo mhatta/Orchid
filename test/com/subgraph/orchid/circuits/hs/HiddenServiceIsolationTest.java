@@ -3,6 +3,7 @@ package com.subgraph.orchid.circuits.hs;
 import static org.easymock.EasyMock.createNiceMock;
 import static org.easymock.EasyMock.expect;
 import static org.easymock.EasyMock.replay;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
 
@@ -47,5 +48,20 @@ public class HiddenServiceIsolationTest {
 		hs.discardCircuit(alice);
 		assertNull(hs.getCircuit("socks5:61:78"));
 		assertSame(shared, hs.getCircuit());
+	}
+
+	@Test
+	public void testClosedCircuitsArePruned() {
+		final HiddenService hs = new HiddenService(new TorConfigImpl(), HSV3Address.parse(ONION));
+		final HiddenServiceCircuit dead = createNiceMock(HiddenServiceCircuit.class);
+		expect(dead.isConnected()).andStubReturn(false);
+		replay(dead);
+		hs.setCircuit(liveCircuit());
+		hs.setCircuit("a", liveCircuit());
+		hs.setCircuit("b", liveCircuit());
+		hs.setCircuit("c", dead);
+		// the null key is not counted, the dead circuit is forgotten
+		assertEquals(2, hs.pruneAndCountIsolationKeys());
+		assertNull(hs.getCircuit("c"));
 	}
 }

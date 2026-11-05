@@ -3,6 +3,7 @@ package com.subgraph.orchid.circuits;
 import static org.easymock.EasyMock.createNiceMock;
 import static org.easymock.EasyMock.expect;
 import static org.easymock.EasyMock.replay;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
@@ -63,5 +64,18 @@ public class StreamIsolationTest {
 		final ExitCircuitImpl c = circuit();
 		c.claimIsolation("socks5:61:78");
 		assertTrue(c.canHandleExitTo(new PredictedPortTarget(443)));
+	}
+
+	@Test
+	public void testIsolationKeysInUse() {
+		final ExitCircuitImpl a = circuit();
+		final ExitCircuitImpl shared = circuit();
+		final ExitCircuitImpl fresh = circuit();
+		a.claimIsolation("a");
+		shared.claimIsolation(null);
+		final java.util.Set<String> keys = CircuitManagerImpl.isolationKeysInUse(
+				java.util.Arrays.asList(a, shared, fresh),
+				java.util.Arrays.asList(request("b"), request(null), request("a")));
+		assertEquals(new java.util.HashSet<String>(java.util.Arrays.asList("a", "b")), keys);
 	}
 }

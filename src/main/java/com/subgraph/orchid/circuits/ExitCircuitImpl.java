@@ -78,6 +78,13 @@ public class ExitCircuitImpl extends CircuitImpl implements ExitCircuit {
 		}
 	}
 
+	/** The isolation key this circuit was claimed for, or null if none (or the null key). */
+	String getClaimedIsolationKey() {
+		synchronized(isolationLock) {
+			return isolationClaimed ? isolationKey : null;
+		}
+	}
+
 	boolean isIsolationCompatible(String key) {
 		synchronized(isolationLock) {
 			return !isolationClaimed || sameKey(isolationKey, key);

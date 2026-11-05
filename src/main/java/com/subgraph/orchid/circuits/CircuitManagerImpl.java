@@ -236,8 +236,47 @@ public class CircuitManagerImpl implements CircuitManager, DashboardRenderable {
 			return hiddenServiceManager.getStreamTo(name, port, isolationKey);
 		}
 		validateHostname(name);
+		checkIsolationGroupLimit(isolationKey);
 		circuitCreationTask.predictPort(port);
 		return pendingExitStreams.openExitStream(name, port, isolationKey);
+	}
+
+	/**
+	 * How many isolation keys may have exit circuits or waiting streams at
+	 * the same time.  Each key needs circuits of its own, so without a
+	 * limit a program that changes its SOCKS user name on every connection
+	 * made Orchid build circuits without end: a load on the guards, and a
+	 * pattern of traffic unlike other clients'.
+	 */
+	public final static int MAX_ISOLATION_GROUPS = 64;
+
+	private void checkIsolationGroupLimit(String isolationKey) throws OpenFailedException {
+		if(isolationKey == null) {
+			return;
+		}
+		final Set<String> keys = isolationKeysInUse(getCircuitsByFilter(null), getPendingExitStreams());
+		if(!keys.contains(isolationKey) && keys.size() >= MAX_ISOLATION_GROUPS) {
+			throw new OpenFailedException("Too many isolated streams open at once ("+ keys.size() +" isolation keys)");
+		}
+	}
+
+	/* The isolation keys (other than null) of open exit circuits and waiting streams. */
+	static Set<String> isolationKeysInUse(Iterable<? extends Circuit> circuits, Iterable<StreamExitRequest> pending) {
+		final Set<String> keys = new HashSet<String>();
+		for(Circuit c: circuits) {
+			if(c instanceof ExitCircuitImpl && !c.isMarkedForClose()) {
+				final String k = ((ExitCircuitImpl) c).getClaimedIsolationKey();
+				if(k != null) {
+					keys.add(k);
+				}
+			}
+		}
+		for(StreamExitRequest r: pending) {
+			if(r.getIsolationKey() != null) {
+				keys.add(r.getIsolationKey());
+			}
+		}
+		return keys;
 	}
 
 	/*
@@ -336,6 +375,7 @@ public class CircuitManagerImpl implements CircuitManager, DashboardRenderable {
 	public Stream openExitStreamTo(IPv4Address address, int port, String isolationKey)
 			throws InterruptedException, TimeoutException, OpenFailedException {
 		maybeRejectInternalAddress(address);
+		checkIsolationGroupLimit(isolationKey);
 		circuitCreationTask.predictPort(port);
 		return pendingExitStreams.openExitStream(address, port, isolationKey);
 	}

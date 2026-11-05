@@ -102,6 +102,10 @@ public class HiddenServiceManager {
             if(existing != null) {
                 return existing;
             }
+            // One rendezvous circuit per isolation key, as many as for exit streams.
+            if(isolationKey != null && hs.pruneAndCountIsolationKeys() >= CircuitManagerImpl.MAX_ISOLATION_GROUPS) {
+                throw new OpenFailedException("Too many isolated streams open to "+ hs.getOnionAddressForLogging() +" at once");
+            }
             final HiddenServiceCircuit c = openCircuitTo(hs);
             if(c == null) {
                 throw new OpenFailedException("Failed to open circuit to "+ hs.getOnionAddressForLogging());
