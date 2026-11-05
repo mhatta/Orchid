@@ -91,7 +91,9 @@ Orchid also includes a "dashboard" feature to observe information about the inte
 java -Dcom.subgraph.orchid.dashboard.port=10000 -jar Orchid-<version>-all.jar
 ```
 
-To access the dashboard, just connect to the port (for this example `10000`) with netcat.
+To access the dashboard, just connect to the port (for this example `10000`) with netcat.  The dashboard has no
+authentication and listens on 127.0.0.1 only; on Android, where every app can reach that address, it does not start
+unless `com.subgraph.orchid.dashboard.allowOnAndroid` is set to `true` (for a debug build).
 
 ## Connecting to onion services
 
@@ -110,7 +112,7 @@ Releases from 2.4.0 on are on Maven Central:
 
 ```groovy
 dependencies {
-    implementation 'org.mhatta:orchid:2.4.0'
+    implementation 'org.mhatta:orchid:2.5.0'
 }
 ```
 
@@ -118,7 +120,7 @@ dependencies {
 <dependency>
   <groupId>org.mhatta</groupId>
   <artifactId>orchid</artifactId>
-  <version>2.4.0</version>
+  <version>2.5.0</version>
 </dependency>
 ```
 
@@ -160,6 +162,9 @@ is a small app that does all of the following.  An app that embeds it should:
 * **Protect the SOCKS port**, if the app opens one: every app on the device
   can connect to `127.0.0.1`.  Set a random password with
   `TorConfig#setSocksPassword()` and give it only to the app's own HTTP client.
+* **Test on a device or an emulator**: the sample's instrumented test
+  (`gradlew connectedDebugAndroidTest` in `samples/android`) checks that a
+  request through Orchid reaches check.torproject.org from Tor.
 
 ## Authors
 
