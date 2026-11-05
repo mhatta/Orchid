@@ -231,35 +231,102 @@ public class CircuitManagerImpl implements CircuitManager, DashboardRenderable {
 	@Override
 	public Stream openExitStreamTo(String hostname, int port, String isolationKey)
 			throws InterruptedException, TimeoutException, OpenFailedException {
-		if(hostname.endsWith(".onion")) {
-			return hiddenServiceManager.getStreamTo(hostname, port, isolationKey);
+		final String name = normalizeHostname(hostname);
+		if(name.endsWith(".onion")) {
+			return hiddenServiceManager.getStreamTo(name, port, isolationKey);
 		}
-		validateHostname(hostname);
+		validateHostname(name);
 		circuitCreationTask.predictPort(port);
-		return pendingExitStreams.openExitStream(hostname, port, isolationKey);
+		return pendingExitStreams.openExitStream(name, port, isolationKey);
+	}
+
+	/*
+	 * The longest name DNS allows.  A BEGIN cell has room for about this much
+	 * after the port.
+	 */
+	private final static int MAX_HOSTNAME_LENGTH = 255;
+
+	/**
+	 * Check a host name given by an application or a SOCKS client, and put
+	 * it in the form used to choose between an onion service and an exit
+	 * relay: one trailing dot removed and, for onion addresses, lower case.
+	 *
+	 * The name used to be passed on unchecked.  ".onion" was matched case
+	 * sensitively, so that "x.ONION" and "x.onion." were sent to an exit
+	 * relay, which then learned the onion address.  A NUL, a colon or a
+	 * control character in the name changes the "host:port" string of the
+	 * BEGIN cell.
+	 */
+	static String normalizeHostname(String hostname) throws OpenFailedException {
+		if(hostname == null || hostname.isEmpty()) {
+			throw new OpenFailedException("Empty host name");
+		}
+		if(hostname.length() > MAX_HOSTNAME_LENGTH) {
+			throw new OpenFailedException("Host name too long");
+		}
+		for(int i = 0; i < hostname.length(); i++) {
+			final char c = hostname.charAt(i);
+			if(c <= ' ' || c == ':' || c == 0x7F || c > 0x7E) {
+				throw new OpenFailedException("Host name contains a character that is not allowed");
+			}
+		}
+		String name = hostname.endsWith(".") ? hostname.substring(0, hostname.length() - 1) : hostname;
+		if(name.isEmpty() || name.endsWith(".") || name.startsWith(".")) {
+			throw new OpenFailedException("Malformed host name");
+		}
+		final String lower = name.toLowerCase(java.util.Locale.ROOT);
+		if(lower.endsWith(".onion") || lower.equals("onion")) {
+			return lower;
+		}
+		return name;
 	}
 
 	private void validateHostname(String hostname) throws OpenFailedException {
 		maybeRejectInternalAddress(hostname);
-		if(hostname.toLowerCase().endsWith(".onion")) {
-			throw new OpenFailedException("Hidden services not supported");
-		} else if(hostname.toLowerCase().endsWith(".exit")) {
+		if(hostname.equals("onion")) {
+			throw new OpenFailedException("Malformed onion address");
+		} else if(hostname.toLowerCase(java.util.Locale.ROOT).endsWith(".exit")) {
 			throw new OpenFailedException(".exit addresses are not supported");
 		}
 	}
 	
 	private void maybeRejectInternalAddress(String hostname) throws OpenFailedException {
+		if(!config.getClientRejectInternalAddress()) {
+			return;
+		}
+		final String lower = hostname.toLowerCase(java.util.Locale.ROOT);
+		if(lower.equals("localhost") || lower.endsWith(".localhost")) {
+			throw new OpenFailedException("Rejecting stream target with internal address: "+ hostname);
+		}
 		if(IPv4Address.isValidIPv4AddressString(hostname)) {
 			maybeRejectInternalAddress(IPv4Address.createFromString(hostname));
 		}
 	}
 	
+	/*
+	 * ClientRejectInternalAddresses: Tor refuses all addresses that are not
+	 * public.  Orchid used to refuse only the RFC 1918 ranges, and let
+	 * loopback, link-local and other local addresses through.
+	 */
 	private void maybeRejectInternalAddress(IPv4Address address) throws OpenFailedException {
-		final InetAddress inetAddress = address.toInetAddress();
-		if(inetAddress.isSiteLocalAddress() && config.getClientRejectInternalAddress()) {
+		if(config.getClientRejectInternalAddress() && isInternalAddress(address)) {
 			throw new OpenFailedException("Rejecting stream target with internal address: "+ address);
 		}
 	}
+
+	static boolean isInternalAddress(IPv4Address address) {
+		final int a = address.getAddressData();
+		final int first = (a >>> 24) & 0xFF;
+		return first == 0							// "this network"
+				|| first == 10						// RFC 1918
+				|| first == 127						// loopback
+				|| (a & 0xFFC00000) == 0x64400000	// 100.64.0.0/10, shared address space
+				|| (a & 0xFFFF0000) == 0xA9FE0000	// 169.254.0.0/16, link local
+				|| (a & 0xFFF00000) == 0xAC100000	// 172.16.0.0/12, RFC 1918
+				|| (a & 0xFFFF0000) == 0xC0A80000	// 192.168.0.0/16, RFC 1918
+				|| first >= 224;					// multicast, reserved, broadcast
+	}
+
 	public Stream openExitStreamTo(IPv4Address address, int port)
 			throws InterruptedException, TimeoutException, OpenFailedException {
 		return openExitStreamTo(address, port, null);
