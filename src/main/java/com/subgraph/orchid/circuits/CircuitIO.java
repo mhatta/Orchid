@@ -598,13 +598,29 @@ public class CircuitIO implements DashboardRenderable {
     StreamImpl createNewStream(boolean autoclose) {
         streamLock.lock();
         try {
-            final int streamId = circuit.getStatus().nextStreamId();
+            final int streamId = nextFreeStreamId();
             final StreamImpl stream = new StreamImpl(circuit, circuit.getFinalCircuitNode(), streamId, autoclose);
             streamMap.put(streamId, stream);
             return stream;
         } finally {
             streamLock.unlock();
         }
+    }
+
+    /*
+     * Stream ids are 16 bits and wrap around.  After wrapping, the next id
+     * could belong to a stream that is still open, which was then replaced
+     * in the stream table and could no longer be closed or read.  Skip ids
+     * in use, as Tor does.  Called with streamLock held.
+     */
+    private int nextFreeStreamId() {
+        for(int i = 0; i < 0xFFFF; i++) {
+            final int id = circuit.getStatus().nextStreamId();
+            if(!streamMap.containsKey(id)) {
+                return id;
+            }
+        }
+        throw new TorException("No free stream id on circuit "+ circuit);
     }
 
     void removeStream(StreamImpl stream) {

@@ -5,6 +5,7 @@ import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeoutException;
 
 import com.subgraph.orchid.Cell;
@@ -69,7 +70,12 @@ public abstract class CircuitImpl implements Circuit, DashboardRenderable {
     }
 
     protected CircuitImpl(CircuitManagerImpl circuitManager, List<Router> prechosenPath) {
-        nodeList = new ArrayList<CircuitNode>();
+        /*
+         * Read by the cell reading thread (to decrypt each cell) while the
+         * building thread appends hops, so the list must be safe to read
+         * while it changes.  It changes only a few times per circuit.
+         */
+        nodeList = new CopyOnWriteArrayList<CircuitNode>();
         this.circuitManager = circuitManager;
         this.prechosenPath = prechosenPath;
         status = new CircuitStatus();
