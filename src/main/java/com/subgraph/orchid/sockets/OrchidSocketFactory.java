@@ -60,7 +60,7 @@ public class OrchidSocketFactory extends SocketFactory {
 	@Override
 	public Socket createSocket(InetAddress address, int port) throws IOException {
         final Socket s = createSocketInstance();
-		return connectOrchidSocket(s, address.getHostAddress(), port);
+		return connectOrchidSocket(s, OrchidSocketImpl.addressToName(address), port);
 	}
 
 	@Override
@@ -87,15 +87,27 @@ public class OrchidSocketFactory extends SocketFactory {
 	 *     .build();
 	 * </pre>
 	 *
-	 * The address is 0.0.0.0, carrying the host name; any other socket
-	 * connected to it would go to the local machine.
+	 * The address is 240.0.0.1, carrying the host name.  240.0.0.0/4 is
+	 * reserved and not routed, so that a socket that does not come from
+	 * this factory fails to connect to it, instead of reaching anything:
+	 * an application that sets the DNS hook but forgets the socket factory
+	 * gets an error.  (Before 2.5.0 the address was 0.0.0.0, which Linux
+	 * and Android treat as the local machine.)
 	 */
 	public static InetAddress unresolvedAddress(String hostname) {
 		try {
-			return InetAddress.getByAddress(hostname, new byte[4]);
+			return InetAddress.getByAddress(hostname, PLACEHOLDER_ADDRESS.clone());
 		} catch (UnknownHostException e) {
 			throw new IllegalArgumentException(e);
 		}
+	}
+
+	private final static byte[] PLACEHOLDER_ADDRESS = { (byte) 240, 0, 0, 1 };
+
+	/** Whether <code>address</code> is a placeholder from {@link #unresolvedAddress(String)}. */
+	static boolean isPlaceholder(InetAddress address) {
+		final byte[] a = address.getAddress();
+		return a.length == 4 && (a[0] & 0xFF) == 240;
 	}
 
 	private Socket connectOrchidSocket(Socket s, String host, int port) throws IOException {

@@ -1,6 +1,7 @@
 package com.subgraph.orchid.sockets;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import java.net.InetAddress;
@@ -19,7 +20,7 @@ public class UnresolvedAddressTest {
 	@Test
 	public void testPlaceholderCarriesTheHostName() {
 		final InetAddress a = OrchidSocketFactory.unresolvedAddress("check.torproject.org");
-		assertTrue(a.isAnyLocalAddress());
+		assertEquals("240.0.0.1", a.getHostAddress());
 		assertEquals("check.torproject.org", OrchidSocketImpl.addressToName(a));
 		assertEquals("check.torproject.org", OrchidSocketImpl.addressToName(new InetSocketAddress(a, 443)));
 	}
@@ -39,5 +40,25 @@ public class UnresolvedAddressTest {
 	@Test
 	public void testPlainZeroAddressIsNotAName() throws Exception {
 		assertEquals("0.0.0.0", OrchidSocketImpl.addressToName(InetAddress.getByAddress(new byte[4])));
+	}
+
+	/*
+	 * A socket that does not come from Orchid's factory must not reach
+	 * anything when connected to the placeholder.  0.0.0.0, the placeholder
+	 * before 2.5.0, is the local machine on Linux and Android.
+	 */
+	@Test
+	public void testPlaceholderIsNotALocalAddress() {
+		final InetAddress a = OrchidSocketFactory.unresolvedAddress("example.com");
+		assertFalse(a.isAnyLocalAddress());
+		assertFalse(a.isLoopbackAddress());
+		assertFalse(a.isSiteLocalAddress());
+		assertFalse(a.isLinkLocalAddress());
+		assertFalse(a.isMulticastAddress());
+	}
+
+	@Test
+	public void testOldPlaceholderIsStillAccepted() throws Exception {
+		assertEquals("example.com", OrchidSocketImpl.addressToName(InetAddress.getByAddress("example.com", new byte[4])));
 	}
 }

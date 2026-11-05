@@ -85,10 +85,11 @@ public class OrchidSocketImpl extends SocketImpl {
 	 * The name the exit relay is asked to connect to.  An unresolved address
 	 * keeps its host name, so that the name is resolved by the exit relay
 	 * and not by the local DNS.  A placeholder from
-	 * OrchidSocketFactory#unresolvedAddress() (0.0.0.0 carrying a host name)
-	 * stands for that host name too: HTTP clients such as OkHttp resolve
-	 * names before they connect, and with a Dns that returns placeholders
-	 * the name still reaches the exit relay.
+	 * OrchidSocketFactory#unresolvedAddress() (240.0.0.1 carrying a host
+	 * name) stands for that host name too: HTTP clients such as OkHttp
+	 * resolve names before they connect, and with a Dns that returns
+	 * placeholders the name still reaches the exit relay.  The placeholder
+	 * of earlier versions, 0.0.0.0 carrying a host name, is still accepted.
 	 */
 	static String addressToName(InetSocketAddress address) {
 		if(address.getAddress() != null) {
@@ -99,8 +100,8 @@ public class OrchidSocketImpl extends SocketImpl {
 	}
 
 	static String addressToName(InetAddress address) {
-		if(address.isAnyLocalAddress()) {
-			// "host/0.0.0.0": the host name given, with no reverse lookup
+		if(OrchidSocketFactory.isPlaceholder(address) || address.isAnyLocalAddress()) {
+			// "host/240.0.0.1": the host name given, with no reverse lookup
 			final String s = address.toString();
 			final int slash = s.indexOf('/');
 			if(slash > 0) {
