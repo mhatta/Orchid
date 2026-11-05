@@ -5,7 +5,6 @@ import java.security.PublicKey;
 import java.security.interfaces.RSAPublicKey;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Date;
 import java.util.List;
 
 import javax.net.ssl.SSLSocket;
@@ -129,28 +128,36 @@ public abstract class ConnectionHandshake {
     }
 
     protected void sendNetinfo() throws ConnectionIOException {
+        connection.sendCell(createNetinfoCell(connection.getRouter().getAddress()));
+    }
+
+    static Cell createNetinfoCell(IPv4Address relayAddress) {
         final Cell cell = CellImpl.createCell(0, Cell.NETINFO);
         putTimestamp(cell);
-        putIPv4Address(cell, connection.getRouter().getAddress());
+        putIPv4Address(cell, relayAddress);
         putMyAddresses(cell);
-        connection.sendCell(cell);
+        return cell;
     }
 
-    private void putTimestamp(Cell cell) {
-        final Date now = new Date();
-        cell.putInt((int) (now.getTime() / 1000));
+    /*
+     * tor-spec 4.5: clients send 0 instead of the time and no addresses of
+     * their own, as Tor clients do.  Orchid sent the time, whose offset
+     * tells a relay how far the device's clock is off, which can recognize
+     * it, and 0.0.0.0 as its address.
+     */
+    private static void putTimestamp(Cell cell) {
+        cell.putInt(0);
     }
 
-    private void putIPv4Address(Cell cell, IPv4Address address) {
+    private static void putIPv4Address(Cell cell, IPv4Address address) {
         final byte[] data = address.getAddressDataBytes();
         cell.putByte(Cell.ADDRESS_TYPE_IPV4);
         cell.putByte(data.length); 
         cell.putByteArray(data);
     }
 
-    private void putMyAddresses(Cell cell) {
-        cell.putByte(1);
-        putIPv4Address(cell, new IPv4Address(0));
+    private static void putMyAddresses(Cell cell) {
+        cell.putByte(0);
     }
 
     protected void recvNetinfo() throws ConnectionHandshakeException {

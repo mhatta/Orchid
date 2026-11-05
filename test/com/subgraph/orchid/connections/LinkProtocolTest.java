@@ -119,4 +119,15 @@ public class LinkProtocolTest {
 				Arrays.copyOfRange(bytes, Cell.CELL_HEADER_LEN, Cell.CELL_HEADER_LEN + 14));
 		assertEquals(Cell.CELL_HEADER_LEN + 11, RelayCell.HEADER_SIZE);
 	}
+
+	@Test
+	public void testNetinfoCarriesNeitherTimeNorOwnAddress() {
+		final Cell cell = ConnectionHandshake.createNetinfoCell(new com.subgraph.orchid.data.IPv4Address(0xC0000201));
+		cell.resetToPayload();
+		assertEquals(0, cell.getInt());					// timestamp
+		assertEquals(Cell.ADDRESS_TYPE_IPV4, cell.getByte());	// the relay's address
+		assertEquals(4, cell.getByte());
+		assertEquals(0xC0000201, cell.getInt());
+		assertEquals(0, cell.getByte());				// no addresses of our own
+	}
 }
