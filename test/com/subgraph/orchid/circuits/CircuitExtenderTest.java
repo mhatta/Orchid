@@ -76,15 +76,15 @@ public class CircuitExtenderTest {
 		final CircuitImpl circuit = buildCircuit(relay);
 		final CircuitNode exit = circuit.getFinalCircuitNode();
 
-		circuit.sendRelayCell(circuit.createRelayCell(RelayCell.RELAY_DROP, 0, exit));
+		circuit.sendRelayCell(circuit.createRelayCell(RelayCell.RELAY_COMMAND_INTRODUCE1, 0, exit));
 		relay.drain();
 		assertNull(relay.getFailure());
-		assertEquals(RelayCell.RELAY_DROP, relay.hops.get(2).received.get(0).getRelayCommand());
+		assertEquals(RelayCell.RELAY_COMMAND_INTRODUCE1, relay.hops.get(2).received.get(0).getRelayCommand());
 
-		relay.sendBackward(2, RelayCell.RELAY_RESOLVED, 7, new byte[] { 1, 2, 3 });
+		relay.sendBackward(2, RelayCell.RELAY_COMMAND_INTRODUCE_ACK, 0, new byte[] { 0, 0 });
 		final RelayCell reply = circuit.receiveRelayCell();
-		assertEquals(RelayCell.RELAY_RESOLVED, reply.getRelayCommand());
-		assertEquals(7, reply.getStreamId());
+		assertEquals(RelayCell.RELAY_COMMAND_INTRODUCE_ACK, reply.getRelayCommand());
+		assertEquals(0, reply.getStreamId());
 		assertSame(exit, reply.getCircuitNode());
 	}
 

@@ -96,6 +96,28 @@ public class ConnectionImpl implements Connection, DashboardRenderable {
     private volatile long handshakeTimeout = DEFAULT_HANDSHAKE_TIMEOUT;
     private volatile long handshakeDeadline;
 
+    /*
+     * The link handshake cells (VERSIONS, CERTS, AUTH_CHALLENGE, NETINFO)
+     * are queued for the handshake.  A relay sends each of them once, so a
+     * few places are enough; a relay that sends more, or sends any of them
+     * after the handshake, breaks the protocol, and the connection is
+     * closed.  The queue used to have no limit and to keep accepting them
+     * after the handshake, when nobody takes them out any more, so that a
+     * relay could fill the heap with 64 KiB CERTS cells.
+     */
+    final static int MAX_QUEUED_CONTROL_CELLS = 8;
+    private volatile boolean handshakeComplete;
+
+    /*
+     * Cells for a circuit that is not on this connection are dropped.  Some
+     * arrive normally, for a circuit we have just destroyed; they are
+     * counted and reported at most once a minute, so that a relay cannot
+     * fill the log with them.
+     */
+    private final static long UNKNOWN_CIRCUIT_LOG_INTERVAL = 60 * 1000;
+    private int unknownCircuitCells;
+    private long unknownCircuitLogTime;
+
 
     public ConnectionImpl(TorConfig config, SSLSocket socket, Router router, TorInitializationTracker tracker, boolean isDirectoryConnection) {
         this.config = config;
@@ -104,7 +126,7 @@ public class ConnectionImpl implements Connection, DashboardRenderable {
         this.circuitMap = new HashMap<Integer, Circuit>();
         this.readCellsThread = new Thread(createReadCellsRunnable());
         this.readCellsThread.setDaemon(true);
-        this.connectionControlCells = new LinkedBlockingQueue<Cell>();
+        this.connectionControlCells = new LinkedBlockingQueue<Cell>(MAX_QUEUED_CONTROL_CELLS);
         this.initializationTracker = tracker;
         this.isDirectoryConnection = isDirectoryConnection;
         initializeCurrentCircuitId();
@@ -204,6 +226,7 @@ public class ConnectionImpl implements Connection, DashboardRenderable {
         output = socket.getOutputStream();
         readCellsThread.start();
         handshake.runHandshake();
+        handshakeComplete = true;
         updateLastActivity();
     }
 
@@ -333,7 +356,7 @@ public class ConnectionImpl implements Connection, DashboardRenderable {
             try {
                 processCell( recvCell() );
             } catch(ConnectionIOException e) {
-                connectionControlCells.add(connectionClosedSentinel);
+                signalClosedToHandshake();
                 notifyCircuitsLinkClosed();
                 return;
             } catch(TorException e) {
@@ -346,10 +369,18 @@ public class ConnectionImpl implements Connection, DashboardRenderable {
                  */
                 logger.warn("Closing connection to "+ router +" after an unexpected error processing a cell: "+ e, e);
                 closeSocket();
-                connectionControlCells.add(connectionClosedSentinel);
+                signalClosedToHandshake();
                 notifyCircuitsLinkClosed();
                 return;
             }
+        }
+    }
+
+    /* Wake up a handshake waiting for a link handshake cell. */
+    private void signalClosedToHandshake() {
+        if(!connectionControlCells.offer(connectionClosedSentinel)) {
+            connectionControlCells.clear();
+            connectionControlCells.offer(connectionClosedSentinel);
         }
     }
 
@@ -388,7 +419,12 @@ public class ConnectionImpl implements Connection, DashboardRenderable {
         }
     }
 
-    private void processCell(Cell cell) {
+    /* For tests. */
+    void setHandshakeComplete() {
+        handshakeComplete = true;
+    }
+
+    void processCell(Cell cell) throws ConnectionIOException {
         updateLastActivity();
         final int command = cell.getCommand();
 
@@ -399,13 +435,13 @@ public class ConnectionImpl implements Connection, DashboardRenderable {
 
         switch(command) {
         case Cell.VERSIONS:
+            queueHandshakeCell(cell);
             processVersionsCell(cell);
-            connectionControlCells.add(cell);
             break;
         case Cell.NETINFO:
         case Cell.CERTS:
         case Cell.AUTH_CHALLENGE:
-            connectionControlCells.add(cell);
+            queueHandshakeCell(cell);
             break;
 
         case Cell.CREATED2:
@@ -420,13 +456,39 @@ public class ConnectionImpl implements Connection, DashboardRenderable {
         }
     }
 
+    private void queueHandshakeCell(Cell cell) throws ConnectionIOException {
+        final String name = handshakeCellName(cell.getCommand());
+        if(handshakeComplete) {
+            closeForProtocolViolation(name +" cell after the link handshake");
+        }
+        if(!connectionControlCells.offer(cell)) {
+            closeForProtocolViolation("too many link handshake cells ("+ name +")");
+        }
+    }
+
+    private static String handshakeCellName(int command) {
+        switch(command) {
+        case Cell.VERSIONS: return "VERSIONS";
+        case Cell.CERTS: return "CERTS";
+        case Cell.AUTH_CHALLENGE: return "AUTH_CHALLENGE";
+        case Cell.NETINFO: return "NETINFO";
+        default: return "command "+ command;
+        }
+    }
+
+    private void closeForProtocolViolation(String reason) throws ConnectionIOException {
+        logger.warn("Closing connection to "+ router +": protocol error, "+ reason);
+        closeSocket();
+        throw new ConnectionIOException("Protocol error: "+ reason);
+    }
+
     private void processRelayCell(Cell cell) {
         Circuit circuit;
         circuitsLock.lock();
         try {
             circuit = circuitMap.get(cell.getCircuitId());
             if(circuit == null) {
-                logger.warn("Could not deliver relay cell for circuit id = "+ Integer.toHexString(cell.getCircuitId()) +" on connection "+ this +". Circuit not found");
+                logUnknownCircuitCell(cell);
                 return;
             }
         } finally {
@@ -434,6 +496,19 @@ public class ConnectionImpl implements Connection, DashboardRenderable {
         }
 
         circuit.deliverRelayCell(cell);
+    }
+
+    /* Called with circuitsLock held. */
+    private void logUnknownCircuitCell(Cell cell) {
+        unknownCircuitCells++;
+        final long now = System.currentTimeMillis();
+        if(unknownCircuitLogTime != 0 && now - unknownCircuitLogTime < UNKNOWN_CIRCUIT_LOG_INTERVAL) {
+            return;
+        }
+        logger.info("Dropped "+ unknownCircuitCells +" relay cell(s) for circuits that are not open on connection "+ this
+                + " (the last for circuit id "+ Integer.toHexString(cell.getCircuitId()) +")");
+        unknownCircuitCells = 0;
+        unknownCircuitLogTime = now;
     }
 
     private void processControlCell(Cell cell) {

@@ -57,9 +57,20 @@ public class StreamImpl implements Stream, DashboardRenderable {
         deliverWindow = STREAMWINDOW_START;
     }
 
-    void addInputCell(RelayCell cell) {
+    /**
+     * Add a cell received for this stream.
+     *
+     * @return false if the cell breaks the stream's flow control: a DATA
+     *         cell beyond the delivery window, or a SENDME that would open
+     *         the package window beyond its initial size.  The caller
+     *         closes the circuit, as Tor does.  A DATA cell beyond the
+     *         window used to be buffered before it was counted, so that an
+     *         exit relay could keep sending DATA cells to an application
+     *         that does not read them until the heap was full.
+     */
+    boolean addInputCell(RelayCell cell) {
         if(isClosed){
-            return;
+            return true;
         }
         if(cell.getRelayCommand() == RelayCell.RELAY_END) {
             synchronized(waitConnectLock) {
@@ -75,19 +86,23 @@ public class StreamImpl implements Stream, DashboardRenderable {
             }
         } else if(cell.getRelayCommand() == RelayCell.RELAY_SENDME) {
             synchronized(windowLock) {
+                if(packageWindow + STREAMWINDOW_INCREMENT > STREAMWINDOW_START) {
+                    return false;
+                }
                 packageWindow += STREAMWINDOW_INCREMENT;
                 windowLock.notifyAll();
             }
         } else {
-            inputStream.addInputCell(cell);
-            synchronized(windowLock) { 
-                deliverWindow--;
-                if(deliverWindow < 0){
-                    throw new TorException("Stream has negative delivery window");
+            synchronized(windowLock) {
+                if(deliverWindow <= 0) {
+                    return false;
                 }
+                deliverWindow--;
             }
+            inputStream.addInputCell(cell);
             considerSendingSendme();
         }
+        return true;
     }
 
     private void considerSendingSendme() {

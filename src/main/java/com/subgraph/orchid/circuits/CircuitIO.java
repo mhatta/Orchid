@@ -53,13 +53,26 @@ public class CircuitIO implements DashboardRenderable {
     private boolean isMarkedForClose;
     private boolean isClosed;
 
+    /*
+     * The replies the circuit is waiting for.  A relay may answer only a
+     * request we have sent: a reply nobody asked for used to be queued, and
+     * as nobody takes it out of the queue, a relay on the circuit could
+     * fill the heap with them.  Tor treats such cells as protocol
+     * violations and closes the circuit; so does Orchid.  The queues are
+     * bounded as well, as a second line of defence.
+     */
+    private final static int MAX_QUEUED_REPLIES = 8;
+    private final Object expectedRepliesLock = new Object();
+    private final Map<Integer, Integer> expectedRelayReplies = new HashMap<Integer, Integer>();
+    private boolean expectingCreated;
+
     CircuitIO(CircuitImpl circuit, Connection connection, int circuitId) {
         this.circuit = circuit;
         this.connection = connection;
         this.circuitId = circuitId;
 
-        this.relayCellResponseQueue = new LinkedBlockingQueue<RelayCell>();
-        this.controlCellResponseQueue = new LinkedBlockingQueue<Cell>();
+        this.relayCellResponseQueue = new LinkedBlockingQueue<RelayCell>(MAX_QUEUED_REPLIES);
+        this.controlCellResponseQueue = new LinkedBlockingQueue<Cell>(MAX_QUEUED_REPLIES);
         this.streamMap = new HashMap<Integer, StreamImpl>();
     }
 
@@ -78,7 +91,7 @@ public class CircuitIO implements DashboardRenderable {
             final RelayCell cell = relayCellResponseQueue.poll(timeout, TimeUnit.MILLISECONDS);
             if(cell == DESTROYED_RELAY_CELL) {
                 // leave it for any other waiting thread
-                relayCellResponseQueue.add(cell);
+                offerSentinel(relayCellResponseQueue, DESTROYED_RELAY_CELL);
                 return null;
             }
             return cell;
@@ -111,7 +124,7 @@ public class CircuitIO implements DashboardRenderable {
             final long timeout = getReceiveTimeout();
             final Cell cell = controlCellResponseQueue.poll(timeout, TimeUnit.MILLISECONDS);
             if(cell == DESTROYED_CONTROL_CELL) {
-                controlCellResponseQueue.add(cell);
+                offerSentinel(controlCellResponseQueue, DESTROYED_CONTROL_CELL);
                 return null;
             }
             return cell;
@@ -160,8 +173,84 @@ public class CircuitIO implements DashboardRenderable {
     void deliverControlCell(Cell cell) {
         if(cell.getCommand() == Cell.DESTROY) {
             processDestroyCell(cell.getByte());
-        } else {
-            controlCellResponseQueue.add(cell);
+            return;
+        }
+        final boolean expected;
+        synchronized(expectedRepliesLock) {
+            expected = expectingCreated;
+            expectingCreated = false;
+        }
+        if(!expected || !controlCellResponseQueue.offer(cell)) {
+            logger.warn("Closing circuit "+ circuit +": protocol error, unexpected cell command "+ cell.getCommand());
+            sendDestroyCell(Cell.ERROR_PROTOCOL);
+            destroyCircuit("protocol error: unexpected cell command "+ cell.getCommand());
+        }
+    }
+
+    /*
+     * Requests whose replies arrive on the circuit's response queue.  A
+     * rendezvous point answers ESTABLISH_RENDEZVOUS at once and sends
+     * RENDEZVOUS2 when the onion service has reached it.
+     */
+    private void expectRepliesTo(int relayCommand) {
+        switch(relayCommand) {
+        case RelayCell.RELAY_EXTEND2:
+            expectReply(RelayCell.RELAY_EXTENDED2);
+            break;
+        case RelayCell.RELAY_COMMAND_ESTABLISH_RENDEZVOUS:
+            expectReply(RelayCell.RELAY_COMMAND_RENDEZVOUS_ESTABLISHED);
+            expectReply(RelayCell.RELAY_COMMAND_RENDEZVOUS2);
+            break;
+        case RelayCell.RELAY_COMMAND_INTRODUCE1:
+            expectReply(RelayCell.RELAY_COMMAND_INTRODUCE_ACK);
+            break;
+        default:
+            break;
+        }
+    }
+
+    private void expectReply(int relayCommand) {
+        synchronized(expectedRepliesLock) {
+            final Integer n = expectedRelayReplies.get(relayCommand);
+            expectedRelayReplies.put(relayCommand, (n == null) ? 1 : n + 1);
+        }
+    }
+
+    /* Whether a reply of this kind was expected; if so it is no longer. */
+    private boolean takeExpectedReply(int relayCommand) {
+        synchronized(expectedRepliesLock) {
+            final Integer n = expectedRelayReplies.get(relayCommand);
+            if(n == null) {
+                return false;
+            }
+            if(n == 1) {
+                expectedRelayReplies.remove(relayCommand);
+            } else {
+                expectedRelayReplies.put(relayCommand, n - 1);
+            }
+            return true;
+        }
+    }
+
+    /* A TRUNCATED cell ends every request still waiting for a reply. */
+    private boolean takeAllExpectedReplies() {
+        synchronized(expectedRepliesLock) {
+            final boolean any = !expectedRelayReplies.isEmpty();
+            expectedRelayReplies.clear();
+            return any;
+        }
+    }
+
+    private void queueReply(RelayCell relayCell) {
+        if(!relayCellResponseQueue.offer(relayCell)) {
+            rejectCell(relayCell, "too many replies queued");
+        }
+    }
+
+    private static <T> void offerSentinel(BlockingQueue<T> queue, T sentinel) {
+        if(!queue.offer(sentinel)) {
+            queue.clear();
+            queue.offer(sentinel);
         }
     }
 
@@ -177,8 +266,7 @@ public class CircuitIO implements DashboardRenderable {
         logRelayCell("Dispatching: ", relayCell);
         switch(relayCell.getRelayCommand()) {
         case RelayCell.RELAY_TRUNCATED:
-            // Any hop may report that the circuit was cut beyond it.
-            relayCellResponseQueue.add(relayCell);
+            processTruncated(relayCell);
             break;
         case RelayCell.RELAY_EXTENDED:
         case RelayCell.RELAY_EXTENDED2:
@@ -187,12 +275,18 @@ public class CircuitIO implements DashboardRenderable {
         case RelayCell.RELAY_COMMAND_INTRODUCE_ACK:
         case RelayCell.RELAY_COMMAND_RENDEZVOUS2:
             // Replies to a request sent to the last hop of the circuit.
+            final String name = RelayCellImpl.commandToDescription(relayCell.getRelayCommand());
             if(!isFromFinalNode(relayCell)) {
-                rejectCell(relayCell, "reply cell "+ RelayCellImpl.commandToDescription(relayCell.getRelayCommand()) +" from a hop that is not the last one");
+                rejectCell(relayCell, "reply cell "+ name +" from a hop that is not the last one");
                 return;
             }
-            relayCellResponseQueue.add(relayCell);
-            break;	
+            // Orchid sends neither EXTEND nor RESOLVE, so EXTENDED and RESOLVED are never expected.
+            if(!takeExpectedReply(relayCell.getRelayCommand())) {
+                rejectCell(relayCell, "reply cell "+ name +" to no request");
+                return;
+            }
+            queueReply(relayCell);
+            break;
         case RelayCell.RELAY_DATA:
         case RelayCell.RELAY_END:
         case RelayCell.RELAY_CONNECTED:
@@ -213,6 +307,24 @@ public class CircuitIO implements DashboardRenderable {
             destroyCircuit();
             throw new TorException("Unexpected 'forward' direction relay cell type: "+ relayCell.getRelayCommand());
         }
+    }
+
+    /*
+     * Any hop may report that the circuit was cut beyond it.  While a
+     * request is waiting (an EXTEND2 that failed, say), TRUNCATED is its
+     * answer.  Otherwise the circuit is no longer usable for what it was
+     * built for, and Orchid closes it, as Tor does, rather than queue the
+     * cell where nobody would take it out.
+     */
+    private void processTruncated(RelayCell relayCell) {
+        if(takeAllExpectedReplies()) {
+            queueReply(relayCell);
+            return;
+        }
+        final int reason = (relayCell.cellBytesRemaining() > 0) ? relayCell.getByte() & 0xFF : Cell.ERROR_NONE;
+        logger.debug("TRUNCATED cell ("+ CellImpl.errorToDescription(reason) +") from "+ relayCell.getCircuitNode() +" on "+ circuit);
+        sendDestroyCell(Cell.ERROR_NONE);
+        destroyCircuit("truncated by relay: "+ CellImpl.errorToDescription(reason));
     }
 
     /*
@@ -246,11 +358,15 @@ public class CircuitIO implements DashboardRenderable {
         // the client has stopped waiting for it, the stream will never be tracked and eventually the edge node
         // will send a RELAY_END for this stream.
         if(stream != null) {
+            final boolean accepted;
             streamLock.lock();
             try {
-                stream.addInputCell(cell);
+                accepted = stream.addInputCell(cell);
             } finally {
                 streamLock.unlock();
+            }
+            if(!accepted) {
+                rejectCell(cell, "stream cell "+ RelayCellImpl.commandToDescription(cell.getRelayCommand()) +" outside the stream window");
             }
         }
     }
@@ -332,6 +448,7 @@ public class CircuitIO implements DashboardRenderable {
                     node.encryptForwardCell(cell);
                 }
 
+                expectRepliesTo(cell.getRelayCommand());
                 sendCell(cell);
                 return;
             } finally {
@@ -348,6 +465,11 @@ public class CircuitIO implements DashboardRenderable {
         final CircuitStatus status = circuit.getStatus();
         if(!(status.isConnected() || status.isBuilding())){
             return;
+        }
+        if(cell.getCommand() == Cell.CREATE_FAST || cell.getCommand() == Cell.CREATE2) {
+            synchronized(expectedRepliesLock) {
+                expectingCreated = true;
+            }
         }
         try {
             status.updateDirtyTimestamp();
@@ -469,8 +591,8 @@ public class CircuitIO implements DashboardRenderable {
         } finally {
             streamLock.unlock();
         }
-        controlCellResponseQueue.add(DESTROYED_CONTROL_CELL);
-        relayCellResponseQueue.add(DESTROYED_RELAY_CELL);
+        offerSentinel(controlCellResponseQueue, DESTROYED_CONTROL_CELL);
+        offerSentinel(relayCellResponseQueue, DESTROYED_RELAY_CELL);
     }
 
     StreamImpl createNewStream(boolean autoclose) {

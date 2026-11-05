@@ -100,14 +100,28 @@ public class RelayCellSourceTest {
 	}
 
 	@Test(timeout = 20000)
-	public void testTruncatedFromMiddleHopIsDelivered() throws InterruptedException {
+	public void testTruncatedFromMiddleHopAnswersPendingRequest() throws InterruptedException {
 		// Any hop may report that the circuit was cut beyond it.
 		final FakeRelay relay = new FakeRelay(3);
 		final CircuitImpl circuit = CircuitExtenderTest.buildCircuit(relay);
+		circuit.sendRelayCell(circuit.createRelayCell(RelayCell.RELAY_COMMAND_INTRODUCE1, 0, circuit.getFinalCircuitNode()));
+		relay.drain();
 		relay.sendBackward(MIDDLE, RelayCell.RELAY_TRUNCATED, 0, new byte[] { (byte) Cell.ERROR_CONNECTFAILED });
 		final RelayCell reply = circuit.receiveRelayCell();
 		assertNotNull(reply);
 		assertEquals(RelayCell.RELAY_TRUNCATED, reply.getRelayCommand());
 		assertNull(circuit.getDestroyReason());
+	}
+
+	@Test(timeout = 20000)
+	public void testTruncatedWithoutRequestClosesCircuit() throws InterruptedException {
+		final FakeRelay relay = new FakeRelay(3);
+		final CircuitImpl circuit = CircuitExtenderTest.buildCircuit(relay);
+		relay.sendBackward(MIDDLE, RelayCell.RELAY_TRUNCATED, 0, new byte[] { (byte) Cell.ERROR_CONNECTFAILED });
+		relay.drain();
+		assertNotNull("circuit was not closed", circuit.getDestroyReason());
+		assertTrue(circuit.getDestroyReason(), circuit.getDestroyReason().startsWith("truncated"));
+		assertTrue(relay.controlCommands.contains(Cell.DESTROY));
+		assertNull(circuit.receiveRelayCell());
 	}
 }
