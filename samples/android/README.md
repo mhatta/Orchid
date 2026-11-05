@@ -24,7 +24,9 @@ through Tor with OkHttp.  It shows what an app that embeds Orchid has to do:
 The sample builds Orchid from this checkout (see `settings.gradle`; remove
 the `includeBuild` block to use `org.mhatta:orchid` from Maven Central).
 It needs the Android SDK (`ANDROID_HOME` or `local.properties`) and JDK 17
-or later:
+or later.  Android Studio can open `samples/android` directly; it takes the
+Gradle version from `gradle/wrapper/gradle-wrapper.properties`, the same as
+Orchid's.  From the command line, use Orchid's wrapper:
 
 ```sh
 cd samples/android
