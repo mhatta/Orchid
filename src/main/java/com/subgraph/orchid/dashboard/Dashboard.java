@@ -102,8 +102,29 @@ public class Dashboard implements DashboardRenderable, DashboardRenderer {
         return System.getProperty(DASHBOARD_PORT_PROPERTY) != null;
     }
 
+    private final static String ALLOW_ON_ANDROID_PROPERTY = "com.subgraph.orchid.dashboard.allowOnAndroid";
+
+    /*
+     * The dashboard has no authentication and shows the entry guards, the
+     * circuits and the streams.  On a desktop only the local user's programs
+     * can usually reach 127.0.0.1, but on Android every app on the device
+     * can, so another app could watch how the user's traffic is routed.  The
+     * dashboard is a debugging tool; on Android it is not started unless
+     * the system property com.subgraph.orchid.dashboard.allowOnAndroid is
+     * "true", for a debug build.
+     */
+    static boolean mayListen(String vmName, String allowOnAndroid) {
+        final boolean android = "Dalvik".equals(vmName);
+        return !android || "true".equals(allowOnAndroid);
+    }
+
     public synchronized void startListening() {
         if(isListening) {
+            return;
+        }
+        if(!mayListen(System.getProperty("java.vm.name"), System.getProperty(ALLOW_ON_ANDROID_PROPERTY))) {
+            logger.warn("Not starting the dashboard: on Android every app could connect to it.  Set "
+                    + ALLOW_ON_ANDROID_PROPERTY +"=true to start it anyway in a debug build.");
             return;
         }
         try {
