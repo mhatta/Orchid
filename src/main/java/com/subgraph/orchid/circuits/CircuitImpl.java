@@ -59,6 +59,11 @@ public abstract class CircuitImpl implements Circuit, DashboardRenderable {
 
     private CircuitIO io;
 
+    /** The path chooser of the circuit manager, or null in tests without one. */
+    CircuitPathChooser getPathChooser() {
+        return (circuitManager == null) ? null : circuitManager.getPathChooser();
+    }
+
     protected CircuitImpl(CircuitManagerImpl circuitManager) {
         this(circuitManager, null);
     }

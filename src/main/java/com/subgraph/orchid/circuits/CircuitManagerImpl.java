@@ -64,6 +64,10 @@ public class CircuitManagerImpl implements CircuitManager, DashboardRenderable {
 	private final CircuitCreationTask circuitCreationTask;
 	private final TorInitializationTracker initializationTracker;
 	private final CircuitPathChooser pathChooser;
+
+	CircuitPathChooser getPathChooser() {
+		return pathChooser;
+	}
 	private final HiddenServiceManager hiddenServiceManager;
 	private final ReentrantLock lock = Threading.lock("circuitManager");
 

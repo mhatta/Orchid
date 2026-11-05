@@ -11,6 +11,7 @@ import com.subgraph.orchid.InternalCircuit;
 import com.subgraph.orchid.Router;
 import com.subgraph.orchid.Stream;
 import com.subgraph.orchid.StreamConnectFailedException;
+import com.subgraph.orchid.TorException;
 import com.subgraph.orchid.circuits.path.CircuitPathChooser;
 import com.subgraph.orchid.circuits.path.PathSelectionFailedException;
 
@@ -47,8 +48,29 @@ public class InternalCircuitImpl extends CircuitImpl implements InternalCircuit,
 			throw new IllegalStateException("Cannot cannibalize internal circuit with type "+ type);
 			
 		}
+		checkNotRelatedToCircuit(target);
 		final CircuitExtender extender = new CircuitExtender(this);
 		extender.extendTo(target);
+	}
+
+	/*
+	 * The introduction point or HSDir is chosen by the onion service (or by
+	 * the hash ring), not by us, so it may be related to a relay already on
+	 * the circuit: the same relay, or one in its family or /16.  Tor does
+	 * not cannibalize such a circuit (circuit_find_to_cannibalize()); Orchid
+	 * used to extend it anyway, which could put two relays of one operator
+	 * on the circuit.
+	 */
+	private void checkNotRelatedToCircuit(Router target) {
+		final CircuitPathChooser pathChooser = getPathChooser();
+		if(pathChooser == null) {
+			return;
+		}
+		for(CircuitNode node: getNodeList()) {
+			if(pathChooser.areRelated(node.getRouter(), target)) {
+				throw new TorException("Cannot extend circuit to "+ target.getNickname() +": it is related to "+ node.getRouter().getNickname() +", already on the circuit");
+			}
+		}
 	}
 	
 	public Stream openDirectoryStream(long timeout, boolean autoclose) throws InterruptedException, TimeoutException, StreamConnectFailedException {

@@ -105,8 +105,9 @@ public class RendezvousCircuitBuilder implements Callable<HiddenServiceCircuit>{
             logger.debug("Introduction point "+ ip + " not found in directory");
             return null;
         }
+        InternalCircuit circuit = null;
         try {
-            final InternalCircuit circuit = circuitManager.getCleanInternalCircuit(HiddenServiceManager.INTERNAL_CIRCUIT_WAIT_MS);
+            circuit = circuitManager.getCleanInternalCircuit(HiddenServiceManager.INTERNAL_CIRCUIT_WAIT_MS);
             return circuit.cannibalizeToIntroductionPoint(r);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -116,6 +117,9 @@ public class RendezvousCircuitBuilder implements Callable<HiddenServiceCircuit>{
             return null;
         } catch (TorException e) {
             logger.debug("cannibalizeTo() failed : "+ e.getMessage());
+            if(circuit != null) {
+                circuit.markForClose();
+            }
             return null;
         }
     }
