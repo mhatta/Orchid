@@ -159,6 +159,11 @@ is a small app that does all of the following.  An app that embeds it should:
 * **Keep host names off the device's DNS** with HTTP clients that resolve
   names themselves, such as OkHttp: use `torClient.getSocketFactory(key)` and a
   DNS hook that returns `OrchidSocketFactory.unresolvedAddress(host)`.
+* **Run TLS through an SSLEngine** for HTTPS over Orchid: give the HTTP client
+  `new AndroidSSLSocketFactory(sslContext)` (for OkHttp, with
+  `sslSocketFactory(factory, trustManager)`).  The platform's SSLSocket needs
+  a socket with a file descriptor, which a Tor stream does not have; on older
+  releases such as Android 7.0 the handshake fails with "Socket closed".
 * **Trust the Let's Encrypt roots on Android 7.0** if the app talks to sites
   with Let's Encrypt certificates: 7.0 (API 24) does not ship ISRG Root X1,
   so the handshake fails there whether or not Tor is used.  The sample adds
