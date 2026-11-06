@@ -104,6 +104,9 @@ jar {
                    // A stable name for applications that use Java modules.
                    'Automatic-Module-Name': 'com.subgraph.orchid'
     }
+    // The jar carries third-party code (see LICENSE), so it carries the
+    // notices too.
+    from('LICENSE') { into 'META-INF' }
 }
 
 // The demo programs: "gradle runDemo" runs OrchidDemo, and demoJar packs
