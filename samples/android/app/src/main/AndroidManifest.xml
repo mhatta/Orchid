@@ -13,12 +13,16 @@
       and later, where allowBackup no longer stops device-to-device
       transfers.  The data directory itself is under getNoBackupFilesDir(),
       which is never backed up.
+
+      networkSecurityConfig adds the Let's Encrypt roots for Android 7.0;
+      see res/xml/network_security_config.xml.
     -->
     <application
         android:label="Orchid sample"
         android:allowBackup="false"
         android:fullBackupContent="false"
-        android:dataExtractionRules="@xml/data_extraction_rules">
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:networkSecurityConfig="@xml/network_security_config">
 
         <activity
             android:name=".MainActivity"

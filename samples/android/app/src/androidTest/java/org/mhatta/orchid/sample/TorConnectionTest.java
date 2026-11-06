@@ -55,7 +55,16 @@ public class TorConnectionTest {
                 done.await(BOOTSTRAP_MINUTES, TimeUnit.MINUTES));
         assertNull("Orchid failed to start", failure.get());
 
-        final String answer = TorCheck.fetch(orchid.client());
+        final String answer;
+        try {
+            answer = TorCheck.fetch(orchid.client());
+        } catch (java.io.IOException e) {
+            // The test report keeps only the first line; logcat.txt (the CI
+            // artifact) gets the causes, e.g. "Trust anchor for certification
+            // path not found".
+            Log.e(TorCheck.TAG, "request through Tor failed", e);
+            throw e;
+        }
         Log.i(TorCheck.TAG, "check.torproject.org: " + answer);
         assertTrue("not through Tor: " + answer, TorCheck.isTor(answer));
     }

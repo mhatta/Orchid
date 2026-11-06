@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 7.0 (API 24) does not ship ISRG Root X1, the root of Let's Encrypt
+  (it came with Android 7.1.1), and Let's Encrypt no longer serves the chain
+  cross-signed by DST Root CA X3.  So on 7.0 no Let's Encrypt site, such as
+  check.torproject.org, can be verified with the system CAs alone.  Trust the
+  two ISRG roots in addition to the system CAs; user-installed CAs stay
+  untrusted.
+
+  ISRG Root X1  SHA-256 96:BC:EC:06:26:49:76:F3:74:60:77:9A:CF:28:C5:A7:CF:E8:A3:C0:AA:E1:1A:8F:FC:EE:05:C0:BD:DF:08:C6
+  ISRG Root X2  SHA-256 69:72:9B:8E:15:A8:6E:FC:17:7A:57:AF:B7:17:1D:FC:64:AD:D2:8C:2F:CA:8C:F1:50:7E:34:45:3C:CB:14:70
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="@raw/isrg_root_x1" />
+            <certificates src="@raw/isrg_root_x2" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

@@ -164,6 +164,10 @@ is a small app that does all of the following.  An app that embeds it should:
   `sslSocketFactory(factory, trustManager)`).  The platform's SSLSocket needs
   a socket with a file descriptor, which a Tor stream does not have; on older
   releases such as Android 7.0 the handshake fails with "Socket closed".
+* **Trust the Let's Encrypt roots on Android 7.0** if the app talks to sites
+  with Let's Encrypt certificates: 7.0 (API 24) does not ship ISRG Root X1,
+  so the handshake fails there whether or not Tor is used.  The sample adds
+  ISRG Root X1 and X2 with a network security config.
 * **Protect the SOCKS port**, if the app opens one: every app on the device
   can connect to `127.0.0.1`.  Set a random password with
   `TorConfig#setSocksPassword()` and give it only to the app's own HTTP client.
