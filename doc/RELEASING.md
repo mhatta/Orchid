@@ -33,10 +33,22 @@ version comes from `git describe`, and a build that is not exactly a tag
 
 ## Making a release
 
+Push `master` and let CI pass **before** tagging.  The CI and Android
+workflows run only on pushes to `master`, not on tags, so a tag pushed on
+its own is never tested on GitHub (v2.5.0 went out that way).
+
 ```sh
-# 1. Tag the release (signed) and push it.
+# 0. Push master and wait until both workflows (CI, Android) pass on it.
+git push origin master
+gh run list --branch master --commit "$(git rev-parse HEAD)"
+gh run watch <run id> --exit-status   # once for each of the two runs
+# If a run fails, fix it on master and push again; do not tag yet.
+
+# 1. Tag the commit CI tested (signed) and push the tag.
+git fetch origin
+test "$(git rev-parse HEAD)" = "$(git rev-parse origin/master)"
 git tag -s v2.4.0 -m "Orchid 2.4.0"
-git push origin master v2.4.0
+git push origin v2.4.0
 
 # 2. Build from the tag, with no local changes, using JDK 21.
 git checkout v2.4.0
