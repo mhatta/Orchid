@@ -2,18 +2,10 @@ package org.mhatta.orchid.sample;
 
 import java.io.IOException;
 import java.net.InetAddress;
-import java.security.GeneralSecurityException;
-import java.security.KeyStore;
 import java.util.Collections;
 import java.util.List;
 
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.TrustManager;
-import javax.net.ssl.TrustManagerFactory;
-import javax.net.ssl.X509TrustManager;
-
 import com.subgraph.orchid.TorClient;
-import com.subgraph.orchid.sockets.AndroidSSLSocketFactory;
 import com.subgraph.orchid.sockets.OrchidSocketFactory;
 
 import okhttp3.Dns;
@@ -41,51 +33,18 @@ final class TorCheck {
      *   would ask the device's DNS.  unresolvedAddress() returns a
      *   placeholder instead, and the exit relay resolves the name.
      *
-     * - sslSocketFactory: TLS runs over the Tor stream through an SSLEngine
-     *   (AndroidSSLSocketFactory).  The platform's own SSLSocket wraps the
-     *   socket's file descriptor, and a socket through Orchid has none: on
-     *   older releases (seen on Android 7.0, API 24) the handshake fails
-     *   with "SocketException: Socket closed".  The device's trusted CAs are
-     *   used, and OkHttp still checks the host name.
-     *
      * Do not use OkHttp's proxy(new Proxy(SOCKS, ...)) on Android: the
      * platform's SOCKS client speaks SOCKS 4 only, without host names.
      */
-    static OkHttpClient httpClient(TorClient tor) throws IOException {
-        final X509TrustManager trustManager = platformTrustManager();
-        final SSLContext tls;
-        try {
-            tls = SSLContext.getInstance("TLS");
-            tls.init(null, new TrustManager[] { trustManager }, null);
-        } catch (GeneralSecurityException e) {
-            throw new IOException("cannot set up TLS", e);
-        }
+    static OkHttpClient httpClient(TorClient tor) {
         return new OkHttpClient.Builder()
                 .socketFactory(tor.getSocketFactory("orchid-sample"))
-                .sslSocketFactory(new AndroidSSLSocketFactory(tls), trustManager)
                 .dns(new Dns() {
                     public List<InetAddress> lookup(String hostname) {
                         return Collections.singletonList(OrchidSocketFactory.unresolvedAddress(hostname));
                     }
                 })
                 .build();
-    }
-
-    /** The trust manager of the device's trusted CAs. */
-    private static X509TrustManager platformTrustManager() throws IOException {
-        try {
-            final TrustManagerFactory factory =
-                    TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
-            factory.init((KeyStore) null);
-            for (TrustManager tm : factory.getTrustManagers()) {
-                if (tm instanceof X509TrustManager) {
-                    return (X509TrustManager) tm;
-                }
-            }
-        } catch (GeneralSecurityException e) {
-            throw new IOException("cannot load the trusted CAs", e);
-        }
-        throw new IOException("no X509TrustManager on this device");
     }
 
     /** "200 {...}": the status and the body of the answer. */
