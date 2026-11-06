@@ -189,6 +189,7 @@ def getReleaseTag() {
     return '0.0.0'
 }
 
+group = 'org.mhatta'
 version = getReleaseTag().replaceFirst(/^v/, '')
 
 processResources {
@@ -261,6 +262,10 @@ java {
 ['apiElements', 'runtimeElements'].each { name ->
     configurations.named(name) {
         outgoing {
+            // Declaring a capability replaces the default one, which
+            // project dependencies and composite builds (includeBuild, as in
+            // samples/android) ask for; declare it again.
+            capability("${project.group}:${project.name}:${project.version}")
             capability("org.mhatta:orchid:${project.version}")
             capability("org.bitcoinj:orchid:${project.version}")
         }
