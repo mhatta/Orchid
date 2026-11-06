@@ -159,6 +159,11 @@ is a small app that does all of the following.  An app that embeds it should:
 * **Keep host names off the device's DNS** with HTTP clients that resolve
   names themselves, such as OkHttp: use `torClient.getSocketFactory(key)` and a
   DNS hook that returns `OrchidSocketFactory.unresolvedAddress(host)`.
+* **Run TLS through an SSLEngine** for HTTPS over Orchid: give the HTTP client
+  `new AndroidSSLSocketFactory(sslContext)` (for OkHttp, with
+  `sslSocketFactory(factory, trustManager)`).  The platform's SSLSocket needs
+  a socket with a file descriptor, which a Tor stream does not have; on older
+  releases such as Android 7.0 the handshake fails with "Socket closed".
 * **Protect the SOCKS port**, if the app opens one: every app on the device
   can connect to `127.0.0.1`.  Set a random password with
   `TorConfig#setSocksPassword()` and give it only to the app's own HTTP client.
