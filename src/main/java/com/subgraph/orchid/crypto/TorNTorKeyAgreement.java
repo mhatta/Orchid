@@ -8,6 +8,7 @@ import java.security.NoSuchAlgorithmException;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 
+import com.subgraph.orchid.TorException;
 import com.subgraph.orchid.data.HexDigest;
 import com.subgraph.orchid.misc.Utils;
 
@@ -67,9 +68,19 @@ public class TorNTorKeyAgreement implements TorKeyAgreement {
 	
 	private boolean isBad;
 
+	/**
+	 * Derive the circuit keys from the server's reply in CREATED2 or
+	 * EXTENDED2 (SERVER_PK | AUTH, 64 bytes).  Returns false if AUTH does not
+	 * check out; throws TorException if the reply is not 64 bytes long.
+	 */
 	public boolean deriveKeysFromHandshakeResponse(byte[] handshakeResponse, byte[] keyMaterialOut, byte[] verifyHashOut) {
 		isBad = false;
-				
+
+		final int expected = CURVE25519_PUBKEY_LEN + DIGEST256_LEN;
+		if(handshakeResponse == null || handshakeResponse.length != expected) {
+			throw new TorException("ntor handshake reply is "+ ((handshakeResponse == null) ? 0 : handshakeResponse.length) +" bytes long, not "+ expected);
+		}
+
 		final ByteBuffer hr = ByteBuffer.wrap(handshakeResponse);
 		byte[] serverPub = new byte[CURVE25519_PUBKEY_LEN];
 		byte[] authCandidate = new byte[DIGEST256_LEN];

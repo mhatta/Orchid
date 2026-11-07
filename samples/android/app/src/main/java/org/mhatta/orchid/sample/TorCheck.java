@@ -72,7 +72,7 @@ final class TorCheck {
     }
 
     /** The trust manager of the device's trusted CAs. */
-    private static X509TrustManager platformTrustManager() throws IOException {
+    static X509TrustManager platformTrustManager() throws IOException {
         try {
             final TrustManagerFactory factory =
                     TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());

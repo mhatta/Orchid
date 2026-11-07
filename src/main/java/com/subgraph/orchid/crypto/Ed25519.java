@@ -292,11 +292,16 @@ public final class Ed25519 {
 	 * Convert a curve25519 (Montgomery u coordinate) public key into the
 	 * corresponding Ed25519 public key with the given sign bit, using
 	 * y = (u - 1) / (u + 1)  (see proposal 228 / rend-spec-v3 enc-key-cert).
+	 *
+	 * @throws IllegalArgumentException for u = -1, which has no Ed25519 point.
 	 */
 	public static byte[] fromCurve25519PublicKey(byte[] curve25519PublicKey, boolean signBit) {
 		final byte[] copy = Arrays.copyOf(curve25519PublicKey, 32);
 		copy[31] &= 0x7F;
 		final BigInteger u = decodeLittleEndian(copy).mod(P);
+		if(u.add(BigInteger.ONE).mod(P).signum() == 0) {
+			throw new IllegalArgumentException("curve25519 key u = -1 has no Ed25519 equivalent");
+		}
 		final BigInteger y = u.subtract(BigInteger.ONE).multiply(u.add(BigInteger.ONE).modInverse(P)).mod(P);
 		final byte[] out = encodeLittleEndian(y);
 		if(signBit) {

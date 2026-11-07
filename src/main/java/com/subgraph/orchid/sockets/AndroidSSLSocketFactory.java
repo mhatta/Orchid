@@ -34,11 +34,17 @@ public class AndroidSSLSocketFactory extends SSLSocketFactory {
 		
 	}
 
+	/**
+	 * TLS over s (a socket from Orchid) through an SSLEngine.  The server's
+	 * certificate must be valid for host: SSLEngineSSLSocket checks the
+	 * name itself after the handshake, whatever the platform's engine does.
+	 * With autoClose false, closing the TLS socket leaves s open.
+	 */
 	@Override
 	public Socket createSocket(Socket s, String host, int port,
 			boolean autoClose) throws IOException {
 
-		return new SSLEngineSSLSocket(s, sslContext, host, port);
+		return new SSLEngineSSLSocket(s, sslContext, host, port, autoClose);
 	}
 
 	@Override

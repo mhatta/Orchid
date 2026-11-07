@@ -164,6 +164,8 @@ is a small app that does all of the following.  An app that embeds it should:
   `sslSocketFactory(factory, trustManager)`).  The platform's SSLSocket needs
   a socket with a file descriptor, which a Tor stream does not have; on older
   releases such as Android 7.0 the handshake fails with "Socket closed".
+  It checks the server's certificate against the host name itself, after the
+  handshake, since not every platform's SSLEngine does.
 * **Trust the Let's Encrypt roots on Android 7.0** if the app talks to sites
   with Let's Encrypt certificates: 7.0 (API 24) does not ship ISRG Root X1,
   so the handshake fails there whether or not Tor is used.  The sample adds

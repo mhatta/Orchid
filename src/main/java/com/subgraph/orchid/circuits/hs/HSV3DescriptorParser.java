@@ -279,7 +279,12 @@ public final class HSV3DescriptorParser {
 			if(!encKeyCert.isValid(Ed25519Certificate.CERT_TYPE_HS_IP_CC_SIGNING, descriptorSigningKey, nowSeconds)) {
 				throw new TorParsingException("Invalid introduction point enc-key-cert certificate");
 			}
-			final byte[] expectedSubject = Ed25519.fromCurve25519PublicKey(encKey, false);
+			final byte[] expectedSubject;
+			try {
+				expectedSubject = Ed25519.fromCurve25519PublicKey(encKey, false);
+			} catch (IllegalArgumentException e) {
+				throw new TorParsingException("Invalid introduction point enc-key: "+ e.getMessage());
+			}
 			if(!Arrays.equals(expectedSubject, encKeyCert.getCertifiedKey())) {
 				logger.debug("Introduction point enc-key-cert subject does not match the converted enc-key");
 			}

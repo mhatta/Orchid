@@ -13,6 +13,8 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.Socket;
+import java.security.cert.CertificateException;
+import java.security.cert.X509Certificate;
 import java.security.KeyStore;
 import java.util.Arrays;
 import java.util.Random;
@@ -25,7 +27,12 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLException;
 import javax.net.ssl.SSLServerSocket;
 import javax.net.ssl.SSLSocket;
+import javax.net.ssl.SSLEngine;
+import javax.net.ssl.SSLPeerUnverifiedException;
+import javax.net.ssl.TrustManager;
 import javax.net.ssl.TrustManagerFactory;
+import javax.net.ssl.X509ExtendedTrustManager;
+import javax.net.ssl.X509TrustManager;
 
 import org.junit.After;
 import org.junit.Assume;
@@ -409,6 +416,164 @@ public class SSLEngineSSLSocketTest {
 			fail("a certificate for "+ HOST +" was accepted for www.example.com");
 		} catch(SSLException expected) {
 			// No subject alternative DNS name matching www.example.com
+		} finally {
+			s.close();
+		}
+	}
+
+	/*
+	 * A trust manager that checks the chain but never the host name, as an
+	 * engine that ignores endpoint identification behaves (Android's do not
+	 * promise it).
+	 */
+	private static SSLContext nameBlindContext() throws Exception {
+		final KeyStore trust = KeyStore.getInstance(KeyStore.getDefaultType());
+		trust.load(null, null);
+		trust.setCertificateEntry("test", keyStore().getCertificate("test"));
+		final TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+		tmf.init(trust);
+		X509TrustManager found = null;
+		for(TrustManager tm: tmf.getTrustManagers()) {
+			if(tm instanceof X509TrustManager) {
+				found = (X509TrustManager) tm;
+			}
+		}
+		final X509TrustManager chainOnly = found;
+		final X509ExtendedTrustManager blind = new X509ExtendedTrustManager() {
+			public void checkServerTrusted(X509Certificate[] chain, String authType) throws CertificateException {
+				chainOnly.checkServerTrusted(chain, authType);
+			}
+			public void checkServerTrusted(X509Certificate[] chain, String authType, Socket socket) throws CertificateException {
+				chainOnly.checkServerTrusted(chain, authType);
+			}
+			public void checkServerTrusted(X509Certificate[] chain, String authType, SSLEngine engine) throws CertificateException {
+				chainOnly.checkServerTrusted(chain, authType);
+			}
+			public void checkClientTrusted(X509Certificate[] chain, String authType) throws CertificateException {
+				throw new CertificateException("client side only");
+			}
+			public void checkClientTrusted(X509Certificate[] chain, String authType, Socket socket) throws CertificateException {
+				throw new CertificateException("client side only");
+			}
+			public void checkClientTrusted(X509Certificate[] chain, String authType, SSLEngine engine) throws CertificateException {
+				throw new CertificateException("client side only");
+			}
+			public X509Certificate[] getAcceptedIssuers() {
+				return chainOnly.getAcceptedIssuers();
+			}
+		};
+		final SSLContext context = SSLContext.getInstance("TLS");
+		context.init(null, new TrustManager[] { blind }, null);
+		return context;
+	}
+
+	private void startSilentServer() throws Exception {
+		startServer("TLSv1.3".equals(bestProtocol()) ? "TLSv1.3" : "TLSv1.2", new ServerBehaviour() {
+			public void serve(SSLSocket s) throws IOException {
+				try {
+					s.startHandshake();
+					readToEof(s.getInputStream());
+				} catch(IOException e) {
+					// the client hangs up after refusing the certificate
+				}
+			}
+		});
+	}
+
+	private static String bestProtocol() throws Exception {
+		return Arrays.asList(SSLContext.getDefault().getSupportedSSLParameters().getProtocols()).contains("TLSv1.3") ? "TLSv1.3" : "TLSv1.2";
+	}
+
+	/*
+	 * Even if the engine does not check the host name, SSLEngineSSLSocket
+	 * must: the handshake fails, and so does everything after it, so that no
+	 * request goes to a server whose certificate is for another name.
+	 */
+	@Test(timeout = 30000)
+	public void testHostNameCheckedWhenTheEngineDoesNot() throws Exception {
+		startSilentServer();
+		final Socket raw = new Socket(InetAddress.getLoopbackAddress(), server.getLocalPort());
+		raw.setSoTimeout(10000);
+		final SSLEngineSSLSocket s = new SSLEngineSSLSocket(raw, nameBlindContext(), "wrong.orchid.invalid", 443);
+		try {
+			try {
+				s.startHandshake();
+				fail("certificate for "+ HOST +" accepted for wrong.orchid.invalid");
+			} catch(SSLPeerUnverifiedException e) {
+				// expected
+			}
+			try {
+				s.getOutputStream().write("GET / HTTP/1.0\r\n\r\n".getBytes("US-ASCII"));
+				fail("data written after a refused certificate");
+			} catch(SSLException e) {
+				// expected
+			}
+			try {
+				s.getInputStream().read();
+				fail("data read after a refused certificate");
+			} catch(SSLException e) {
+				// expected
+			}
+		} finally {
+			s.close();
+		}
+	}
+
+	/* The same blind engine, with the right name: the check lets it through. */
+	@Test(timeout = 30000)
+	public void testRightNameAcceptedWhenTheEngineDoesNotCheck() throws Exception {
+		startServer(bestProtocol(), new ServerBehaviour() {
+			public void serve(SSLSocket s) throws IOException {
+				readFully(s.getInputStream(), 4);
+				s.getOutputStream().write("pong".getBytes("US-ASCII"));
+				s.getOutputStream().flush();
+				s.getInputStream().read();
+			}
+		});
+		final Socket raw = new Socket(InetAddress.getLoopbackAddress(), server.getLocalPort());
+		raw.setSoTimeout(10000);
+		final SSLEngineSSLSocket s = new SSLEngineSSLSocket(raw, nameBlindContext(), HOST, 443);
+		try {
+			s.getOutputStream().write("ping".getBytes("US-ASCII"));
+			s.getOutputStream().flush();
+			assertArrayEquals("pong".getBytes("US-ASCII"), readFully(s.getInputStream(), 4));
+		} finally {
+			s.close();
+		}
+		assertTrue(String.valueOf(serverFailure.get()), serverFailure.get() == null);
+	}
+
+	/* autoClose false: close() ends TLS but leaves the underlying socket open. */
+	@Test(timeout = 30000)
+	public void testAutoCloseFalseKeepsTheSocket() throws Exception {
+		startSilentServer();
+		final Socket raw = new Socket(InetAddress.getLoopbackAddress(), server.getLocalPort());
+		raw.setSoTimeout(10000);
+		final SSLEngineSSLSocket s = new SSLEngineSSLSocket(raw, clientContext(), HOST, 443, false);
+		s.startHandshake();
+		s.close();
+		assertTrue(s.isClosed());
+		assertFalse("autoClose false closed the underlying socket", raw.isClosed());
+		raw.close();
+	}
+
+	/* A close with close_notify is not a truncation. */
+	@Test(timeout = 30000)
+	public void testOrderlyCloseIsNotTruncation() throws Exception {
+		final String protocol = bestProtocol();
+		startServer(protocol, new ServerBehaviour() {
+			public void serve(SSLSocket s) throws IOException {
+				readFully(s.getInputStream(), 1);
+				s.getOutputStream().write("bye".getBytes("US-ASCII"));
+				s.getOutputStream().flush();
+			}
+		});
+		final SSLEngineSSLSocket s = connect(HOST);
+		try {
+			s.getOutputStream().write('x');
+			s.getOutputStream().flush();
+			assertArrayEquals("bye".getBytes("US-ASCII"), readToEof(s.getInputStream()));
+			assertFalse(s.wasTruncated());
 		} finally {
 			s.close();
 		}

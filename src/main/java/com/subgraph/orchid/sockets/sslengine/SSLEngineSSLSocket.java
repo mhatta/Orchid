@@ -27,6 +27,9 @@ public class SSLEngineSSLSocket extends SSLSocket implements HandshakeCallbackHa
 	private InputStream inputStream;
 	private OutputStream outputStream;
 	private final List<HandshakeCompletedListener> listenerList;
+	/* Whether close() also closes socket. */
+	private final boolean autoClose;
+	private volatile boolean closed = false;
 	/**
 	 * A TLS socket over <code>socket</code> that checks that the server's
 	 * certificate is valid for <code>host</code> (RFC 2818 / RFC 6125, as
@@ -35,11 +38,26 @@ public class SSLEngineSSLSocket extends SSLSocket implements HandshakeCallbackHa
 	 * the client and the server, so a certificate chain that is merely
 	 * trusted, but issued for another name, must be rejected.
 	 *
+	 * The name is checked by the SSLEngine (endpoint identification) and,
+	 * since not every platform's engine does that (Android's do not promise
+	 * it), once more after the handshake by {@link HostnameChecker}.  If
+	 * the check fails, the connection is closed and every read and write
+	 * throws.
+	 *
 	 * @param host The name of the server, as the application asked for it.
 	 * @param port The server's port.
 	 */
 	public SSLEngineSSLSocket(Socket socket, SSLContext context, String host, int port) throws IOException {
-		this(socket, createSSLEngine(context, host, port));
+		this(socket, context, host, port, true);
+	}
+
+	/**
+	 * As {@link #SSLEngineSSLSocket(Socket, SSLContext, String, int)}; with
+	 * autoClose false, close() sends close_notify but leaves socket open
+	 * (see {@link javax.net.ssl.SSLSocketFactory#createSocket(Socket, String, int, boolean)}).
+	 */
+	public SSLEngineSSLSocket(Socket socket, SSLContext context, String host, int port, boolean autoClose) throws IOException {
+		this(socket, createSSLEngine(context, host, port), host, autoClose);
 	}
 
 	/**
@@ -50,14 +68,25 @@ public class SSLEngineSSLSocket extends SSLSocket implements HandshakeCallbackHa
 	 */
 	@Deprecated
 	public SSLEngineSSLSocket(Socket socket, SSLContext context) throws IOException {
-		this(socket, createSSLEngine(context, null, -1));
+		this(socket, createSSLEngine(context, null, -1), null, true);
 	}
 
-	private SSLEngineSSLSocket(Socket socket, SSLEngine engine) throws IOException {
+	private SSLEngineSSLSocket(Socket socket, SSLEngine engine, String verifyHost, boolean autoClose) throws IOException {
 		this.engine = engine;
 		this.socket = socket;
-		this.manager = new SSLEngineManager(engine, this, socket.getInputStream(), socket.getOutputStream());
+		this.autoClose = autoClose;
+		this.manager = new SSLEngineManager(engine, this, socket.getInputStream(), socket.getOutputStream(), verifyHost);
 		this.listenerList = new CopyOnWriteArrayList<HandshakeCompletedListener>();
+	}
+
+	/**
+	 * True if the server closed the connection without a TLS close_notify.
+	 * Reads report that as the end of the stream; but over Tor the exit
+	 * relay can also cut a stream short, so a protocol that does not carry
+	 * its own length should check this before it trusts what it read.
+	 */
+	public boolean wasTruncated() {
+		return manager.wasTruncated();
 	}
 
 	private static SSLEngine createSSLEngine(SSLContext context, String host, int port) {
@@ -295,21 +324,24 @@ public class SSLEngineSSLSocket extends SSLSocket implements HandshakeCallbackHa
 
 	/**
 	 * Send close_notify (unless a writer is stuck) and close the underlying
-	 * socket.  May be called from any thread, also while another thread is
-	 * blocked reading.
+	 * socket, unless this socket was made with autoClose false.  May be
+	 * called from any thread, also while another thread is blocked reading.
 	 */
 	@Override
 	public void close() throws IOException {
+		closed = true;
 		try {
-			manager.close();
+			manager.close(autoClose);
 		} finally {
-			socket.close();
+			if(autoClose) {
+				socket.close();
+			}
 		}
 	}
 
 	@Override
 	public boolean isClosed() {
-		return socket.isClosed();
+		return closed || socket.isClosed();
 	}
 
 	@Override

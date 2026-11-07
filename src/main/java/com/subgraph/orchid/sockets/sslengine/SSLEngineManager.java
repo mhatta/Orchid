@@ -58,6 +58,18 @@ public class SSLEngineManager {
 
     private final HandshakeCallbackHandler handshakeCallback;
 
+    /* The name the server's certificate must be valid for, or null for no check. */
+    private final String verifyHost;
+
+    /* Why the initial handshake failed, if it did; set before handshakeDone. */
+    private volatile IOException handshakeFailure;
+
+    /* The peer closed the connection without close_notify (see wasTruncated()). */
+    private volatile boolean truncated = false;
+
+    /* False after close(false): the underlying output stays open after close_notify. */
+    private volatile boolean closeUnderlying = true;
+
     /*
      * Serializes the initial handshake.  A thread waits here, not on
      * readLock, for a handshake in progress: a reader holds readLock while
@@ -71,8 +83,18 @@ public class SSLEngineManager {
 
 
     SSLEngineManager(SSLEngine engine, HandshakeCallbackHandler handshakeCallback, InputStream input, OutputStream output) {
+        this(engine, handshakeCallback, input, output, null);
+    }
+
+    /**
+     * @param verifyHost After the initial handshake, the server's
+     *  certificate must be valid for this name (see HostnameChecker), or
+     *  every read and write fails.  null for no check.
+     */
+    SSLEngineManager(SSLEngine engine, HandshakeCallbackHandler handshakeCallback, InputStream input, OutputStream output, String verifyHost) {
         this.engine = engine;
         this.handshakeCallback = handshakeCallback;
+        this.verifyHost = verifyHost;
         this.input = input;
         this.output = output;
         final SSLSession session = engine.getSession();
@@ -102,10 +124,15 @@ public class SSLEngineManager {
      * (see ensureHandshake()), so no other thread holds readLock or
      * writeLock here; both are taken because the handshake uses the
      * buffers they guard.
+     *
+     * If the handshake fails, or the server's certificate is not valid for
+     * verifyHost, the connection is closed and this call, and every later
+     * read, write and handshake, throws.
      */
     void startHandshake() throws IOException {
         synchronized(handshakeLock) {
             if(handshakeDone) {
+                throwIfHandshakeFailed();
                 return;
             }
             readLock.lock();
@@ -115,6 +142,15 @@ public class SSLEngineManager {
                     logger.debug("startHandshake()");
                     engine.beginHandshake();
                     runHandshake(true);
+                    if(verifyHost != null) {
+                        HostnameChecker.verify(verifyHost, engine.getSession());
+                    }
+                } catch (IOException e) {
+                    failHandshake(e);
+                    throw e;
+                } catch (RuntimeException e) {
+                    failHandshake(new SSLException("TLS handshake failed", e));
+                    throw e;
                 } finally {
                     writeLock.unlock();
                 }
@@ -125,10 +161,41 @@ public class SSLEngineManager {
         }
     }
 
+    /* Called with both locks held: remember why, and close the connection. */
+    private void failHandshake(IOException cause) {
+        handshakeFailure = cause;
+        engine.closeOutbound();
+        try {
+            output.close();
+        } catch (IOException e) {
+            logger.debug("Closing after a failed TLS handshake: "+ e);
+        }
+    }
+
+    private void throwIfHandshakeFailed() throws IOException {
+        final IOException failure = handshakeFailure;
+        if(failure != null) {
+            throw new SSLException("TLS handshake failed: "+ failure.getMessage(), failure);
+        }
+    }
+
+    /**
+     * True if the peer closed the connection without a close_notify.  read()
+     * reports that as the end of the stream, as many HTTP servers close this
+     * way; but over Tor the exit relay can also cut a stream short, so a
+     * protocol that does not carry its own length (HTTP/1.0 without
+     * Content-Length, for one) should check this before trusting the data.
+     */
+    boolean wasTruncated() {
+        return truncated;
+    }
+
     /* Must be called without holding readLock or writeLock. */
     private void ensureHandshake() throws IOException {
         if(!handshakeDone) {
             startHandshake();
+        } else {
+            throwIfHandshakeFailed();
         }
     }
 
@@ -311,7 +378,9 @@ public class SSLEngineManager {
                  * before, this is reported as the end of the stream (many
                  * HTTP servers close this way); SSLEngine#closeInbound() is
                  * not called because it would throw for the truncation.
+                 * wasTruncated() tells it apart.
                  */
+                truncated = true;
                 return -1;
             }
         }
@@ -327,6 +396,15 @@ public class SSLEngineManager {
      * unblocks the reader and the writer.
      */
     void close() throws IOException {
+        close(true);
+    }
+
+    /**
+     * As close(), but closeUnderlying false leaves the underlying output
+     * stream open (SSLSocketFactory#createSocket with autoClose false).
+     */
+    void close(boolean closeUnderlying) throws IOException {
+        this.closeUnderlying = closeUnderlying;
         boolean locked = false;
         try {
             locked = writeLock.tryLock(CLOSE_LOCK_TIMEOUT, TimeUnit.MILLISECONDS);
@@ -334,7 +412,7 @@ public class SSLEngineManager {
             Thread.currentThread().interrupt();
         }
         try {
-            if(locked && handshakeDone && !engine.isOutboundDone()) {
+            if(locked && handshakeDone && handshakeFailure == null && !engine.isOutboundDone()) {
                 flush();
                 engine.closeOutbound();
                 runHandshake(false);
@@ -343,7 +421,9 @@ public class SSLEngineManager {
             if(locked) {
                 writeLock.unlock();
             }
-            output.close();
+            if(closeUnderlying) {
+                output.close();
+            }
         }
     }
 
@@ -470,7 +550,7 @@ public class SSLEngineManager {
 
         switch(result.getStatus()) {
         case CLOSED:
-            if(engine.isOutboundDone()) {
+            if(engine.isOutboundDone() && closeUnderlying) {
                 output.close();
             }
             return false;

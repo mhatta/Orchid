@@ -112,4 +112,10 @@ public class Ed25519Test {
 		final BigInteger v = new BigInteger("123456789012345678901234567890123456789012345678901234567890");
 		assertEquals(v, Ed25519.decodeLittleEndian(Ed25519.encodeLittleEndian(v)));
 	}
+
+	/* u = -1 (p - 1) has no Ed25519 point; it used to throw ArithmeticException. */
+	@Test(expected = IllegalArgumentException.class)
+	public void testCurve25519MinusOneRefused() {
+		Ed25519.fromCurve25519PublicKey(unhex("ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f"), false);
+	}
 }

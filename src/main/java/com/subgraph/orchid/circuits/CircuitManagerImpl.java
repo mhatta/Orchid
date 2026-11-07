@@ -335,7 +335,7 @@ public class CircuitManagerImpl implements CircuitManager, DashboardRenderable {
 		}
 		final String lower = hostname.toLowerCase(java.util.Locale.ROOT);
 		if(lower.equals("localhost") || lower.endsWith(".localhost")) {
-			throw new OpenFailedException("Rejecting stream target with internal address: "+ hostname);
+			throw new OpenFailedException("Rejecting stream target with internal address: "+ forLogging(hostname));
 		}
 		if(IPv4Address.isValidIPv4AddressString(hostname)) {
 			maybeRejectInternalAddress(IPv4Address.createFromString(hostname));
@@ -349,8 +349,16 @@ public class CircuitManagerImpl implements CircuitManager, DashboardRenderable {
 	 */
 	private void maybeRejectInternalAddress(IPv4Address address) throws OpenFailedException {
 		if(config.getClientRejectInternalAddress() && isInternalAddress(address)) {
-			throw new OpenFailedException("Rejecting stream target with internal address: "+ address);
+			throw new OpenFailedException("Rejecting stream target with internal address: "+ forLogging(address.toString()));
 		}
+	}
+
+	/*
+	 * The SOCKS listener and applications log these messages: with
+	 * SafeLogging on, they must not name the destination.
+	 */
+	private String forLogging(String target) {
+		return config.getSafeLogging() ? com.subgraph.orchid.logging.SafeLogging.SCRUBBED : target;
 	}
 
 	static boolean isInternalAddress(IPv4Address address) {
