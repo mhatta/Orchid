@@ -162,12 +162,79 @@ public class EntryGuardsTest {
 		final EntryGuards guards = newGuards();
 		final Router first = guards.chooseRandomGuard(FakeNetwork.none());
 		net.relay(first).hasDescriptor = false;
-		assertNotSame(first, guards.chooseRandomGuard(FakeNetwork.none()));
 		boolean used = false;
 		for(int i = 0; i < 100 && !used; i++) {
 			used = guards.chooseDirectoryGuard() == first;
 		}
 		assertTrue(used);
+	}
+
+	/*
+	 * guard-spec 4.12: a circuit waits for the descriptor of its primary
+	 * guard.  A directory server that withholds it must not move the
+	 * client to another guard.
+	 */
+	@Test
+	public void circuitWaitsForDescriptorOfPrimaryGuard() throws InterruptedException {
+		final EntryGuards guards = newGuards();
+		final Router first = guards.chooseRandomGuard(FakeNetwork.none());
+		net.relay(first).hasDescriptor = false;
+		for(int i = 0; i < 10; i++) {
+			assertNull(guards.chooseRandomGuard(FakeNetwork.none()));
+		}
+		for(SampledGuard g: guards.getSampledGuards()) {
+			assertFalse(g.isConfirmed());
+		}
+		net.relay(first).hasDescriptor = true;
+		assertSame(first, guards.chooseRandomGuard(FakeNetwork.none()));
+	}
+
+	/* A primary guard that is down is not waited for: the next one is used. */
+	@Test
+	public void downPrimaryWithoutDescriptorIsNotWaitedFor() throws InterruptedException {
+		final EntryGuards guards = newGuards();
+		final Router first = guards.chooseRandomGuard(FakeNetwork.none());
+		net.relay(first).hasDescriptor = false;
+		guards.guardConnectionFailed(first);
+		assertSame(routerOf(guards.getPrimaryGuards().get(1)), guards.chooseRandomGuard(FakeNetwork.none()));
+	}
+
+	/*
+	 * The sample comes from the consensus, not from the relays whose
+	 * descriptors happen to have arrived: right after the first start a
+	 * directory server could otherwise pick the client's guards by serving
+	 * only the descriptors of its own.
+	 */
+	@Test
+	public void sampleDoesNotDependOnDescriptors() throws InterruptedException {
+		final Set<Router> served = new HashSet<Router>();
+		for(int i = 0; i < net.relays.size(); i++) {
+			final boolean has = (i < 3);
+			net.relays.get(i).hasDescriptor = has;
+			if(has) {
+				served.add(net.relays.get(i).router);
+			}
+		}
+		final EntryGuards guards = newGuards();
+		guards.chooseDirectoryGuard();
+		assertEquals(20, guards.getSampledGuards().size());
+		int withoutDescriptor = 0;
+		for(SampledGuard g: guards.getSampledGuards()) {
+			if(!served.contains(routerOf(g))) {
+				withoutDescriptor++;
+			}
+		}
+		assertTrue(withoutDescriptor >= 17);
+
+		/* Circuits wait for the primary guard; they do not fall back on a served relay. */
+		final Router primary = routerOf(guards.getPrimaryGuards().get(0));
+		if(!served.contains(primary)) {
+			assertNull(guards.chooseRandomGuard(FakeNetwork.none()));
+		}
+		for(FakeNetwork.Relay r: net.relays) {
+			r.hasDescriptor = true;
+		}
+		assertSame(primary, guards.chooseRandomGuard(FakeNetwork.none()));
 	}
 
 	@Test

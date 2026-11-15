@@ -37,6 +37,14 @@ Push `master` and let CI pass **before** tagging.  The CI and Android
 workflows run only on pushes to `master`, not on tags, so a tag pushed on
 its own is never tested on GitHub (v2.5.0 went out that way).
 
+First set the new version in the dependency examples, which do not follow
+the tag: `README.md` ("How to use as a library") and
+`samples/android/app/build.gradle`.
+
+```sh
+grep -n 'org.mhatta:orchid:\|<version>' README.md samples/android/app/build.gradle
+```
+
 ```sh
 # 0. Push master and wait until both workflows (CI, Android) pass on it.
 git push origin master

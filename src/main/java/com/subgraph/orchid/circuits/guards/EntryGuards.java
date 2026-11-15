@@ -41,6 +41,10 @@ import com.subgraph.orchid.logging.Logger;
  * requests through one of the first three.</li>
  * <li>Only when every primary guard is down does a circuit go through
  * another guard, one at a time, confirmed guards first.</li>
+ * <li>Guards are sampled whether or not their descriptor has arrived, and
+ * a circuit waits for the descriptor of its primary guard (guard-spec
+ * 4.12), so that the directory servers cannot choose a client's guards by
+ * the descriptors they serve.</li>
  * <li>Reachability is learnt from circuits: a failed connection marks a
  * guard down, and it is tried again on the guard-spec retry schedules.
  * Guards are not probed.</li>
@@ -119,7 +123,8 @@ public class EntryGuards {
 
     /**
      * The guard for the first hop of a circuit, or null if none can be
-     * chosen yet (no consensus, or no guard compatible with excluded).
+     * chosen yet (no consensus, the descriptor of a primary guard has not
+     * arrived, or no guard is compatible with excluded).
      * Routers in excluded (the other hops and their relatives) are not
      * chosen.  With UseBridges, a bridge.
      */
@@ -212,9 +217,21 @@ public class EntryGuards {
                 return null;
             }
             for(int attempt = 0; attempt < 2; attempt++) {
-                final Router fromPrimary = chooseFromPrimary(excluded, forDirectory);
-                if(fromPrimary != null) {
-                    return fromPrimary;
+                final List<Router> primaries = usablePrimaryGuards(excluded, forDirectory);
+                if(!primaries.isEmpty()) {
+                    /*
+                     * guard-spec 4.12: a circuit needs the guard's
+                     * descriptor.  While a primary guard that would be
+                     * used has none yet, the circuit waits for it rather
+                     * than go through another guard: otherwise a directory
+                     * server could steer the client away from its primary
+                     * guards by withholding their descriptors.
+                     */
+                    if(!forDirectory && lacksDescriptor(primaries)) {
+                        logger.debug("Waiting for the descriptors of the primary guards");
+                        return null;
+                    }
+                    return chooseAmong(primaries);
                 }
                 final Router other = chooseNonPrimary(excluded, forDirectory);
                 if(other != null) {
@@ -244,22 +261,37 @@ public class EntryGuards {
         return false;
     }
 
-    private Router chooseFromPrimary(Set<Router> excluded, boolean forDirectory) {
-        final List<Router> candidates = new ArrayList<Router>();
+    /*
+     * The primary guards a request may go through now: the first n that
+     * are not known to be down and not excluded, where n is 1 for circuits
+     * and 3 for directory requests.
+     */
+    private List<Router> usablePrimaryGuards(Set<Router> excluded, boolean forDirectory) {
+        final int n = forDirectory ? primaryDirGuardsToUse() : primaryGuardsToUse();
+        final List<Router> routers = new ArrayList<Router>();
         for(SampledGuard g: primary) {
             if(g.getReachable() == SampledGuard.Reachable.NO) {
                 continue;
             }
             final Router r = directory.getRouterByIdentity(g.getIdentity());
-            if(isUsableFor(r, excluded, forDirectory)) {
-                candidates.add(r);
+            if(r != null && !excluded.contains(r) && routers.size() < n) {
+                routers.add(r);
             }
         }
-        if(candidates.isEmpty()) {
-            return null;
+        return routers;
+    }
+
+    private static boolean lacksDescriptor(List<Router> routers) {
+        for(Router r: routers) {
+            if(r.getCurrentDescriptor() == null) {
+                return true;
+            }
         }
-        final int n = Math.min(candidates.size(), forDirectory ? primaryDirGuardsToUse() : primaryGuardsToUse());
-        final Router chosen = candidates.get(random.nextInt(n));
+        return false;
+    }
+
+    private Router chooseAmong(List<Router> routers) {
+        final Router chosen = routers.get(random.nextInt(routers.size()));
         find(chosen).setLastTried(new Date(clock.now()));
         return chosen;
     }
@@ -480,12 +512,19 @@ public class EntryGuards {
          * sample would otherwise fill up with guards that can never be
          * used.  Tor uses a separate "restricted" sample for that case.
          */
+        /*
+         * The sample is drawn from the consensus, whether or not a guard's
+         * descriptor has been downloaded.  If only guards with a descriptor
+         * could be sampled, the directory server that answers first after
+         * the first start, when few descriptors have arrived, could decide
+         * which guards the client samples by the descriptors it serves.
+         */
         while(usable < minFiltered && sampled.size() < maxSample) {
             final Router r = nodeChooser.chooseRandomNode(WeightRule.WEIGHT_FOR_GUARD, new RouterFilter() {
                 public boolean filter(Router router) {
                     return isGuardInConsensus(router) && configFilter.isAllowedAsGuard(router) && find(router) == null;
                 }
-            });
+            }, false);
             if(r == null) {
                 break;
             }

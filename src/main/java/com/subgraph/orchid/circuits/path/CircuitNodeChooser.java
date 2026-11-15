@@ -69,7 +69,20 @@ public class CircuitNodeChooser {
      * @return The chosen router or 'null' if no suitable router is available.
      */
     public Router chooseRandomNode(WeightRule rule, RouterFilter routerFilter) {
-        final List<Router> candidates = getFilteredRouters(routerFilter, true);
+        return chooseRandomNode(rule, routerFilter, true);
+    }
+
+    /**
+     * As {@link #chooseRandomNode(WeightRule, RouterFilter)}; with
+     * needDescriptor false, routers whose descriptor has not been
+     * downloaded yet are candidates too.  The weights come from the
+     * consensus, so the choice does not depend on which descriptors a
+     * directory server has sent so far.
+     *
+     * @return The chosen router or 'null' if no suitable router is available.
+     */
+    public Router chooseRandomNode(WeightRule rule, RouterFilter routerFilter, boolean needDescriptor) {
+        final List<Router> candidates = getFilteredRouters(routerFilter, needDescriptor);
         final Router choice = chooseByBandwidth(candidates, rule);
         if(choice == null) {
             // try again with more permissive flags
