@@ -45,10 +45,13 @@ public class CircuitBuildTask implements Runnable {
             buildCircuit(firstRouter);
             circuit.notifyCircuitBuildCompleted();
         } catch (ConnectionTimeoutException e) {
+            creationRequest.firstHopConnectionFailed(firstRouter);
             connectionFailed("Timeout connecting to "+ firstRouter);
         } catch (ConnectionFailedException e) {
+            creationRequest.firstHopConnectionFailed(firstRouter);
             connectionFailed("Connection failed to "+ firstRouter + " : " + e.getMessage());
         } catch (ConnectionHandshakeException e) {
+            creationRequest.firstHopConnectionFailed(firstRouter);
             connectionFailed("Handshake error connecting to "+ firstRouter + " : " + e.getMessage());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -98,12 +101,14 @@ public class CircuitBuildTask implements Runnable {
     private void buildCircuit(Router firstRouter) throws TorException {
         notifyInitialization();
         final CircuitNode firstNode = extender.createFirstHop(firstRouter);
+        creationRequest.firstHopCreated(firstRouter);
         creationRequest.nodeAdded(firstNode);
 
         for(int i = 1; i < creationRequest.getPathLength(); i++) {
             final CircuitNode extendedNode = extender.extendTo(creationRequest.getPathElement(i));
             creationRequest.nodeAdded(extendedNode);
         }
+        creationRequest.circuitBuiltForUse(firstRouter);
         creationRequest.circuitBuildCompleted(circuit);
         notifyDone();
     }

@@ -6,147 +6,96 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.TimeZone;
 
-import com.subgraph.orchid.Directory;
 import com.subgraph.orchid.DirectoryStore;
-import com.subgraph.orchid.GuardEntry;
-import com.subgraph.orchid.Router;
-import com.subgraph.orchid.Tor;
 import com.subgraph.orchid.DirectoryStore.CacheFile;
-import com.subgraph.orchid.crypto.TorRandom;
+import com.subgraph.orchid.Tor;
 import com.subgraph.orchid.logging.Logger;
 
+/**
+ * The "state" file: the sampled entry guards, one line each, in the format
+ * of Tor's state file (guard-spec, appendix "Persistent state format"):
+ *
+ * <pre>
+ * Guard in=default rsa_id=&lt;hex&gt; nickname=&lt;name&gt; sampled_on=2026-11-09T03:12:45 sampled_by=Orchid-2.6.0 listed=1 confirmed_on=... confirmed_idx=0
+ * </pre>
+ *
+ * The meaning of the fields belongs to EntryGuards; this class only keeps
+ * them, in order and with fields it does not know, as the spec asks.
+ * Lines with other keywords are kept as they are.
+ *
+ * Files written by Orchid before 2.6 hold the guards in Tor's old format
+ * (EntryGuard, EntryGuardAddedBy, EntryGuardDownSince,
+ * EntryGuardUnlistedSince).  Those guards are read as sampled guards that
+ * are confirmed in the order of the file, so that a client keeps the guards
+ * it has been using; the next write uses the new format.
+ */
 public class StateFile {
     private static final Logger logger = Logger.getInstance(StateFile.class);
-	
-    private final static int DATE_LENGTH = 19;
 
+    final static String KEYWORD_GUARD = "Guard";
     final static String KEYWORD_ENTRY_GUARD = "EntryGuard";
     final static String KEYWORD_ENTRY_GUARD_ADDED_BY = "EntryGuardAddedBy";
     final static String KEYWORD_ENTRY_GUARD_DOWN_SINCE = "EntryGuardDownSince";
     final static String KEYWORD_ENTRY_GUARD_UNLISTED_SINCE = "EntryGuardUnlistedSince";
 
-    private final List<GuardEntryImpl> guardEntries = new ArrayList<GuardEntryImpl>();
-    private final TorRandom random = new TorRandom();
-    private final DateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-
-    private class Line {
-        final String line;
-        int offset;
-
-        Line(String line) {
-            this.line = line;
-            offset = 0;
-        }
-
-        private boolean hasChars() {
-            return offset < line.length();
-        }
-
-        private char getChar() {
-            return line.charAt(offset);
-        }
-
-        private void incrementOffset(int n) {
-            offset += n;
-            if(offset > line.length()) {
-                offset = line.length();
-            }
-        }
-
-        private void skipWhitespace() {
-            while(hasChars() && Character.isWhitespace(getChar())) {
-                offset += 1;
-            }
-        }
-
-        String nextToken() {
-            skipWhitespace();
-            if(!hasChars()) {
-                return null;
-            }
-
-            final StringBuilder token = new StringBuilder();
-            while(hasChars() && !Character.isWhitespace(getChar())) {
-                token.append(getChar());
-                offset += 1;
-            }
-            return token.toString();
-        }
-
-        Date parseDate() {
-            skipWhitespace();
-            if(!hasChars()) {
-                return null;
-            }
-            try {
-                final Date date = dateFormat.parse(line.substring(offset));
-                incrementOffset(DATE_LENGTH);
-                return date;
-            } catch (ParseException e) {
-                return null;
-            }
-        }
-    }
-
-    String formatDate(Date date) {
-        return dateFormat.format(date);
-    }
-
     private final DirectoryStore directoryStore;
-    private final Directory directory;
 
-    StateFile(DirectoryStore store, Directory directory) {
+    /* Guard entries in file order; and every other line, kept as read. */
+    private final List<Map<String, String>> guards = new ArrayList<Map<String, String>>();
+    private final List<String> otherLines = new ArrayList<String>();
+
+    StateFile(DirectoryStore store) {
         this.directoryStore = store;
-        this.directory = directory;
     }
 
-    public GuardEntry createGuardEntryFor(Router router) {
-        final GuardEntryImpl entry = new GuardEntryImpl(directory, this, router.getNickname(), router.getIdentityHash().toString());
-        final String version = Tor.getImplementation() + "-" + Tor.getVersion();
-        entry.setVersion(version);
-
-        /* 
-         * "Choose expiry time smudged over the last month."
-         * 
-         * See add_an_entry_guard() in entrynodes.c 
-         */
-        final long createTime = (new Date()).getTime() - (random.nextInt(3600 * 24 * 30) * 1000L);
-        entry.setCreatedTime(new Date(createTime));
-        return entry;
+    /** ISO 8601 in UTC without spaces, as Tor writes dates in the state file. */
+    public static String formatDate(Date date) {
+        return isoFormat().format(date);
     }
 
-    public List<GuardEntry> getGuardEntries() {
-        synchronized (guardEntries) {
-            return new ArrayList<GuardEntry>(guardEntries);
+    /** null if s is not a date written by formatDate(). */
+    public static Date parseDate(String s) {
+        if(s == null) {
+            return null;
+        }
+        try {
+            return isoFormat().parse(s);
+        } catch (ParseException e) {
+            return null;
         }
     }
 
-    public void removeGuardEntry(GuardEntry entry) {
-        synchronized (guardEntries) {
-            guardEntries.remove(entry);
+    private static DateFormat isoFormat() {
+        final SimpleDateFormat f = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
+        f.setTimeZone(TimeZone.getTimeZone("UTC"));
+        f.setLenient(false);
+        return f;
+    }
+
+    /** A copy of the guard entries, in file order. */
+    public List<Map<String, String>> getGuards() {
+        synchronized (guards) {
+            final List<Map<String, String>> copy = new ArrayList<Map<String, String>>();
+            for(Map<String, String> g: guards) {
+                copy.add(new LinkedHashMap<String, String>(g));
+            }
+            return copy;
+        }
+    }
+
+    /** Replace the guard entries and write the file. */
+    public void setGuards(List<Map<String, String>> newGuards) {
+        synchronized (guards) {
+            guards.clear();
+            for(Map<String, String> g: newGuards) {
+                guards.add(new LinkedHashMap<String, String>(g));
+            }
             writeFile();
-        }
-    }
-
-    public void addGuardEntry(GuardEntry entry) {
-        addGuardEntry(entry, true);
-    }
-
-    private void addGuardEntry(GuardEntry entry, boolean writeFile) {
-        synchronized(guardEntries) {
-            if(guardEntries.contains(entry)) {
-                return;
-            }
-            final GuardEntryImpl impl = (GuardEntryImpl) entry;
-            guardEntries.add(impl);
-            synchronized (impl) {
-                impl.setAddedFlag();
-                if(writeFile) {
-                    writeFile();
-                }
-            }
         }
     }
 
@@ -156,141 +105,168 @@ public class StateFile {
 
     ByteBuffer getFileContents() {
         final StringBuilder sb = new StringBuilder();
-        synchronized (guardEntries) {
-            for(GuardEntryImpl entry: guardEntries) {
-                sb.append(entry.writeToString());
+        synchronized (guards) {
+            for(String line: otherLines) {
+                sb.append(line).append('\n');
+            }
+            for(Map<String, String> g: guards) {
+                sb.append(KEYWORD_GUARD);
+                for(Map.Entry<String, String> e: g.entrySet()) {
+                    sb.append(' ').append(e.getKey()).append('=').append(e.getValue());
+                }
+                sb.append('\n');
             }
         }
         return ByteBuffer.wrap(sb.toString().getBytes(Tor.getDefaultCharset()));
     }
 
     void parseBuffer(ByteBuffer buffer) {
-        synchronized (guardEntries) {
-            guardEntries.clear();
-            loadGuardEntries(buffer);
-        }
-    }
-
-    private void loadGuardEntries(ByteBuffer buffer) {
-        GuardEntryImpl currentEntry = null;
-        while(true) {
-            Line line = readLine(buffer);
-            if(line == null) {
-                addEntryIfValid(currentEntry);
-                return;
+        synchronized (guards) {
+            guards.clear();
+            otherLines.clear();
+            final List<String> lines = readLines(buffer);
+            final LegacyReader legacy = new LegacyReader();
+            for(String line: lines) {
+                final String trimmed = line.trim();
+                if(trimmed.isEmpty()) {
+                    continue;
+                }
+                final String keyword = firstToken(trimmed);
+                if(keyword.equals(KEYWORD_GUARD)) {
+                    final Map<String, String> g = parseGuardLine(trimmed.substring(keyword.length()));
+                    if(g != null) {
+                        guards.add(g);
+                    }
+                } else if(legacy.accepts(keyword)) {
+                    legacy.line(keyword, trimmed.substring(keyword.length()).trim());
+                } else {
+                    otherLines.add(line);
+                }
             }
-            currentEntry = processLine(line, currentEntry);
-        }
-    }
-
-    private GuardEntryImpl processLine(Line line, GuardEntryImpl current) {
-        final String keyword = line.nextToken();
-        if(keyword == null) {
-            return current;
-        } else if(keyword.equals(KEYWORD_ENTRY_GUARD)) {
-            addEntryIfValid(current);
-            GuardEntryImpl newEntry = processEntryGuardLine(line);
-            if(newEntry == null) {
-                    return current;
-            } else {
-                    return newEntry;
+            if(guards.isEmpty()) {
+                guards.addAll(legacy.finish());
+            } else if(!legacy.finish().isEmpty()) {
+                logger.info("State file has guards in both the new and the old format; using the new");
             }
-        } else if(keyword.equals(KEYWORD_ENTRY_GUARD_ADDED_BY)) {
-            processEntryGuardAddedBy(line, current);
-            return current;
-        } else if(keyword.equals(KEYWORD_ENTRY_GUARD_DOWN_SINCE)) {
-            processEntryGuardDownSince(line, current);
-            return current;
-        } else if(keyword.equals(KEYWORD_ENTRY_GUARD_UNLISTED_SINCE)) {
-            processEntryGuardUnlistedSince(line, current);
-            return current;
-        } else {
-            return current;
         }
     }
 
-    private GuardEntryImpl processEntryGuardLine(Line line) {
-        final String name = line.nextToken();
-        final String identity = line.nextToken();
-        if(name == null || name.isEmpty() || identity == null || identity.isEmpty()) {
-            logger.warn("Failed to parse EntryGuard line: "+ line.line);
+    private static Map<String, String> parseGuardLine(String rest) {
+        final Map<String, String> g = new LinkedHashMap<String, String>();
+        for(String token: rest.trim().split("\\s+")) {
+            final int eq = token.indexOf('=');
+            if(eq <= 0) {
+                continue;
+            }
+            g.put(token.substring(0, eq), token.substring(eq + 1));
+        }
+        if(!g.containsKey("rsa_id") || !g.containsKey("sampled_on")) {
+            logger.warn("Ignoring a Guard line without rsa_id or sampled_on in the state file");
             return null;
         }
-        return new GuardEntryImpl(directory, this, name, identity);
+        return g;
     }
 
-    private void processEntryGuardAddedBy(Line line, GuardEntryImpl current) {
-        if(current == null) {
-            logger.warn("EntryGuardAddedBy line seen before EntryGuard in state file");
-            return;
-        }
-        final String identity = line.nextToken();
-        final String version = line.nextToken();
-        final Date created = line.parseDate();
-        if(identity == null || identity.isEmpty() || version == null || version.isEmpty() || created == null) {
-            logger.warn("Missing EntryGuardAddedBy field in state file");
-            return;
-        }
-        current.setVersion(version);
-        current.setCreatedTime(created);
+    private static String firstToken(String s) {
+        final String[] parts = s.split("\\s+", 2);
+        return parts[0];
     }
 
-    private void processEntryGuardDownSince(Line line, GuardEntryImpl current) {
-        if(current == null) {
-            logger.warn("EntryGuardDownSince line seen before EntryGuard in state file");
-            return;
+    private static List<String> readLines(ByteBuffer buffer) {
+        final List<String> lines = new ArrayList<String>();
+        if(buffer == null) {
+            return lines;
         }
-
-        final Date downSince = line.parseDate();
-        final Date lastTried = line.parseDate();
-        if(downSince == null) {
-            logger.warn("Failed to parse date field in EntryGuardDownSince line in state file");
-            return;
-        }
-        current.setDownSince(downSince, lastTried);
-    }
-
-    private void processEntryGuardUnlistedSince(Line line, GuardEntryImpl current) {
-        if(current == null) {
-            logger.warn("EntryGuardUnlistedSince line seen before EntryGuard in state file");
-            return;
-        }
-        final Date unlistedSince = line.parseDate();
-        if(unlistedSince == null) {
-            logger.warn("Failed to parse date field in EntryGuardUnlistedSince line in state file");
-            return;
-        }
-        current.setUnlistedSince(unlistedSince);
-    }
-
-    private void addEntryIfValid(GuardEntryImpl entry) {
-        if(isValidEntry(entry)) {
-            addGuardEntry(entry, false);
-        }
-    }
-
-    private boolean isValidEntry(GuardEntryImpl entry) {
-        return entry != null &&
-                        entry.getNickname() != null && 
-                        entry.getIdentity() != null && 
-                        entry.getVersion() != null && 
-                        entry.getCreatedTime() != null;
-    }
-
-    private Line readLine(ByteBuffer buffer) {
-        if(!buffer.hasRemaining()) {
-            return null;
-        }
-
         final StringBuilder sb = new StringBuilder();
         while(buffer.hasRemaining()) {
-            char c = (char) (buffer.get() & 0xFF);
+            final char c = (char) (buffer.get() & 0xFF);
             if(c == '\n') {
-                return new Line(sb.toString());
+                lines.add(sb.toString());
+                sb.setLength(0);
             } else if(c != '\r') {
                 sb.append(c);
             }
         }
-        return new Line(sb.toString());
+        if(sb.length() > 0) {
+            lines.add(sb.toString());
+        }
+        return lines;
+    }
+
+    /*
+     * Reads the EntryGuard blocks of Orchid before 2.6 (and of Tor before
+     * 0.3.0), whose dates were "yyyy-MM-dd HH:mm:ss" in local time.
+     */
+    private static class LegacyReader {
+        private final List<Map<String, String>> result = new ArrayList<Map<String, String>>();
+        private Map<String, String> current;
+
+        boolean accepts(String keyword) {
+            return keyword.equals(KEYWORD_ENTRY_GUARD) || keyword.equals(KEYWORD_ENTRY_GUARD_ADDED_BY)
+                    || keyword.equals(KEYWORD_ENTRY_GUARD_DOWN_SINCE) || keyword.equals(KEYWORD_ENTRY_GUARD_UNLISTED_SINCE);
+        }
+
+        void line(String keyword, String rest) {
+            final String[] f = rest.isEmpty() ? new String[0] : rest.split("\\s+");
+            if(keyword.equals(KEYWORD_ENTRY_GUARD)) {
+                close();
+                if(f.length < 2) {
+                    logger.warn("Ignoring a malformed EntryGuard line in the state file");
+                    return;
+                }
+                current = new LinkedHashMap<String, String>();
+                current.put("in", "default");
+                current.put("rsa_id", f[1]);
+                current.put("nickname", f[0]);
+                current.put("listed", "1");
+            } else if(current == null) {
+                return;
+            } else if(keyword.equals(KEYWORD_ENTRY_GUARD_ADDED_BY) && f.length >= 4) {
+                final Date added = parseLegacyDate(f[2] +" "+ f[3]);
+                if(added != null) {
+                    current.put("sampled_on", formatDate(added));
+                    current.put("sampled_by", f[1]);
+                }
+            } else if(keyword.equals(KEYWORD_ENTRY_GUARD_UNLISTED_SINCE) && f.length >= 2) {
+                final Date unlisted = parseLegacyDate(f[0] +" "+ f[1]);
+                if(unlisted != null) {
+                    current.put("listed", "0");
+                    current.put("unlisted_since", formatDate(unlisted));
+                }
+            }
+            /* EntryGuardDownSince is reachability, which guard-spec does not keep across runs. */
+        }
+
+        private void close() {
+            if(current != null && current.containsKey("sampled_on")) {
+                /*
+                 * These guards were in use: they are confirmed, in file order.
+                 * Confirmed now, not when sampled, so that a guard sampled
+                 * long ago is kept for GUARD_CONFIRMED_MIN_LIFETIME instead
+                 * of being dropped at the first start of the new version.
+                 */
+                current.put("confirmed_on", formatDate(new Date()));
+                current.put("confirmed_idx", Integer.toString(result.size()));
+                result.add(current);
+            } else if(current != null) {
+                logger.warn("Ignoring an EntryGuard without EntryGuardAddedBy in the state file");
+            }
+            current = null;
+        }
+
+        List<Map<String, String>> finish() {
+            close();
+            return result;
+        }
+
+        private static Date parseLegacyDate(String s) {
+            try {
+                final SimpleDateFormat f = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+                f.setLenient(false);
+                return f.parse(s);
+            } catch (ParseException e) {
+                return null;
+            }
+        }
     }
 }

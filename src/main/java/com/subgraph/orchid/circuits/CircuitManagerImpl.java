@@ -34,6 +34,7 @@ import com.subgraph.orchid.Threading;
 import com.subgraph.orchid.Tor;
 import com.subgraph.orchid.TorConfig;
 import com.subgraph.orchid.circuits.guards.EntryGuards;
+import com.subgraph.orchid.circuits.guards.VanguardsLite;
 import com.subgraph.orchid.circuits.hs.HiddenServiceManager;
 import com.subgraph.orchid.circuits.path.CircuitPathChooser;
 import com.subgraph.orchid.crypto.TorRandom;
@@ -79,7 +80,8 @@ public class CircuitManagerImpl implements CircuitManager, DashboardRenderable {
 		this.connectionCache = connectionCache;
 		this.pathChooser = CircuitPathChooser.create(config, directory);
 		if(config.getUseEntryGuards() || config.getUseBridges()) {
-			this.pathChooser.enableEntryGuards(new EntryGuards(config, connectionCache, directoryDownloader, directory));
+			this.pathChooser.enableEntryGuards(new EntryGuards(config, directoryDownloader, directory));
+			this.pathChooser.enableVanguardsLite(new VanguardsLite(config, directory));
 		}
 		this.pendingExitStreams = new PendingExitStreams(config);
 		this.circuitCreationTask = new CircuitCreationTask(config, directory, connectionCache, pathChooser, this, initializationTracker);

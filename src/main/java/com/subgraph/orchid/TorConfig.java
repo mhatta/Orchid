@@ -49,7 +49,14 @@ public interface TorConfig {
 	long getSocksTimeout();
 	void setSocksTimeout(long value);
 	
+	/**
+	 * Unused since 2.6.0: the number of primary guards comes from the
+	 * consensus (guard-n-primary-guards), as in guard-spec.
+	 */
+	@Deprecated
 	int getNumEntryGuards();
+	/** Unused since 2.6.0; see {@link #getNumEntryGuards()}. */
+	@Deprecated
 	void setNumEntryGuards(int value);
 	
 	boolean getUseEntryGuards();

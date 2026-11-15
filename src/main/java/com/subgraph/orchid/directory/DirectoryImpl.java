@@ -18,7 +18,6 @@ import com.subgraph.orchid.Directory;
 import com.subgraph.orchid.DirectoryServer;
 import com.subgraph.orchid.DirectoryStore;
 import com.subgraph.orchid.DirectoryStore.CacheFile;
-import com.subgraph.orchid.GuardEntry;
 import com.subgraph.orchid.KeyCertificate;
 import com.subgraph.orchid.Router;
 import com.subgraph.orchid.RouterDescriptor;
@@ -67,7 +66,7 @@ public class DirectoryImpl implements Directory {
     public DirectoryImpl(TorConfig config, DirectoryStore customDirectoryStore) {
         store = (customDirectoryStore == null) ? (new DirectoryStoreImpl(config)) : (customDirectoryStore);
         this.config = config;
-        stateFile = new StateFile(store, this);
+        stateFile = new StateFile(store);
         microdescriptorCache = createMicrodescriptorCache(store);
         basicDescriptorCache = createBasicDescriptorCache(store);	
         routersByIdentity = new HashMap<HexDigest, RouterImpl>();
@@ -600,27 +599,15 @@ public class DirectoryImpl implements Directory {
     }
 
     @Override
-    public GuardEntry createGuardEntryFor(Router router) {
+    public List<Map<String, String>> getGuardState() {
         waitUntilLoaded();
-        return stateFile.createGuardEntryFor(router);
+        return stateFile.getGuards();
     }
 
     @Override
-    public List<GuardEntry> getGuardEntries() {
+    public void setGuardState(List<Map<String, String>> guards) {
         waitUntilLoaded();
-        return stateFile.getGuardEntries();
-    }
-
-    @Override
-    public void removeGuardEntry(GuardEntry entry) {
-        waitUntilLoaded();
-        stateFile.removeGuardEntry(entry);
-    }
-
-    @Override
-    public void addGuardEntry(GuardEntry entry) {
-        waitUntilLoaded();
-        stateFile.addGuardEntry(entry);
+        stateFile.setGuards(guards);
     }
 
     @Override

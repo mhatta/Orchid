@@ -2,6 +2,7 @@ package com.subgraph.orchid;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import com.subgraph.orchid.ConsensusDocument.RequiredCertificate;
@@ -46,8 +47,13 @@ public interface Directory {
 	RouterMicrodescriptor getMicrodescriptorFromCache(HexDigest descriptorDigest);
 	RouterDescriptor getBasicDescriptorFromCache(HexDigest descriptorDigest);
 	
-	GuardEntry createGuardEntryFor(Router router);
-	List<GuardEntry> getGuardEntries();
-	void removeGuardEntry(GuardEntry entry);
-	void addGuardEntry(GuardEntry entry);
+	/**
+	 * The sampled entry guards as kept in the state file, in order: one
+	 * map of the fields of each <code>Guard</code> line (guard-spec,
+	 * "Persistent state format").  EntryGuards gives them their meaning.
+	 */
+	List<Map<String, String>> getGuardState();
+
+	/** Replace the sampled entry guards in the state file and write it. */
+	void setGuardState(List<Map<String, String>> guards);
 }

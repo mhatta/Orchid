@@ -207,11 +207,13 @@ public class TorConfigImpl implements TorConfig {
     }
 
     @Override
+    @Deprecated
     public int getNumEntryGuards() {
         return numEntryGuards;
     }
 
     @Override
+    @Deprecated
     public void setNumEntryGuards(int value) {
         numEntryGuards = value;
     }

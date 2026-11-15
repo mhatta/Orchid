@@ -35,6 +35,26 @@ public class CircuitCreationRequest implements CircuitBuildHandler {
 
 	}
 
+	/* Guard feedback; see CircuitPathChooser. */
+
+	void firstHopConnectionFailed(Router firstHop) {
+		if(pathChooser != null && firstHop != null) {
+			pathChooser.firstHopConnectionFailed(firstHop);
+		}
+	}
+
+	void firstHopCreated(Router firstHop) {
+		if(pathChooser != null && firstHop != null) {
+			pathChooser.firstHopCreated(firstHop);
+		}
+	}
+
+	void circuitBuiltForUse(Router firstHop) {
+		if(pathChooser != null && firstHop != null && !isDirectoryCircuit) {
+			pathChooser.circuitBuiltForUse(firstHop);
+		}
+	}
+
 	CircuitImpl getCircuit() {
 		return circuit;
 	}

@@ -12,6 +12,7 @@ import com.subgraph.orchid.Directory;
 import com.subgraph.orchid.Router;
 import com.subgraph.orchid.TorConfig;
 import com.subgraph.orchid.circuits.guards.EntryGuards;
+import com.subgraph.orchid.circuits.guards.VanguardsLite;
 import com.subgraph.orchid.circuits.path.CircuitNodeChooser.WeightRule;
 import com.subgraph.orchid.data.IPv4Address;
 import com.subgraph.orchid.data.exitpolicy.ExitTarget;
@@ -27,6 +28,7 @@ public class CircuitPathChooser {
 	
 	private EntryGuards entryGuards;
 	private boolean useEntryGuards;
+	private VanguardsLite vanguards;
 	
 	CircuitPathChooser(TorConfig config, Directory directory, CircuitNodeChooser nodeChooser) {
 		this.directory = directory;
@@ -47,26 +49,88 @@ public class CircuitPathChooser {
 		this.useEntryGuards = true;
 	}
 
+	/** Use layer-2 guards (vanguards-lite) on onion service circuits. */
+	public void enableVanguardsLite(VanguardsLite vanguards) {
+		this.vanguards = vanguards;
+	}
+
+	/*
+	 * One-hop directory requests go to a primary guard (directory guards,
+	 * as in Tor), or to a bridge.  Before there is a consensus, or with
+	 * entry guards off, to a directory cache, fallback directory or
+	 * authority.
+	 */
 	public List<Router> chooseDirectoryPath() throws InterruptedException {
 		if(useEntryGuards && entryGuards.isUsingBridges()) {
-			final Set<Router> empty = Collections.emptySet();
-			final Router bridge = entryGuards.chooseRandomGuard(empty);
+			final Router bridge = entryGuards.chooseDirectoryGuard();
 			if(bridge == null) {
 				throw new IllegalStateException("Failed to choose bridge for directory request");
 			}
 			return Arrays.asList(bridge);
 		}
+		if(useEntryGuards) {
+			final Router guard = entryGuards.chooseDirectoryGuard();
+			if(guard != null) {
+				return Arrays.asList(guard);
+			}
+		}
 		final Router dir = nodeChooser.chooseDirectory();
 		return Arrays.asList(dir);
 	}
-	
+
+	/*
+	 * A circuit for onion service use: guard, layer-2 guard (with
+	 * vanguards-lite), middle.  The middle is the rendezvous point, or the
+	 * circuit is extended from it to an introduction point or HSDir.
+	 */
 	public List<Router> chooseInternalPath() throws InterruptedException, PathSelectionFailedException {
-		final Set<Router> excluded = Collections.emptySet();
+		if(vanguards == null) {
+			final Set<Router> excluded = Collections.emptySet();
+			final Router finalRouter = chooseMiddleNode(excluded);
+			if(finalRouter == null) {
+				throw new PathSelectionFailedException("Failed to select suitable final node for internal circuit");
+			}
+			return choosePathWithFinal(finalRouter);
+		}
+		final Set<Router> excluded = new HashSet<Router>();
+		final Router entryRouter = chooseEntryNode(excluded);
+		if(entryRouter == null) {
+			throw new PathSelectionFailedException("Failed to select suitable entry node");
+		}
+		excludeChosenRouterAndRelated(entryRouter, excluded);
+		final Router layer2 = vanguards.chooseLayer2(excluded);
+		if(layer2 == null) {
+			throw new PathSelectionFailedException("No layer-2 guard can be used with the guard "+ entryRouter.getNickname());
+		}
+		excludeChosenRouterAndRelated(layer2, excluded);
 		final Router finalRouter = chooseMiddleNode(excluded);
 		if(finalRouter == null) {
 			throw new PathSelectionFailedException("Failed to select suitable final node for internal circuit");
 		}
-		return choosePathWithFinal(finalRouter);
+		return Arrays.asList(entryRouter, layer2, finalRouter);
+	}
+
+	/* Feedback for guard selection (guard-spec 4.7, 4.8). */
+
+	/** A connection to the first hop of a circuit failed. */
+	public void firstHopConnectionFailed(Router firstHop) {
+		if(useEntryGuards) {
+			entryGuards.guardConnectionFailed(firstHop);
+		}
+	}
+
+	/** The first hop of a circuit was created. */
+	public void firstHopCreated(Router firstHop) {
+		if(useEntryGuards) {
+			entryGuards.guardReachable(firstHop);
+		}
+	}
+
+	/** A circuit that will carry user traffic (not a directory request) was built. */
+	public void circuitBuiltForUse(Router firstHop) {
+		if(useEntryGuards) {
+			entryGuards.guardUsed(firstHop);
+		}
 	}
 
 	public List<Router> choosePathWithExit(Router exitRouter) throws InterruptedException, PathSelectionFailedException {

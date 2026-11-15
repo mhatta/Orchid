@@ -23,7 +23,7 @@ public class TorConfigNodeFilter {
 	
 	private final Map<String, ConfigNodeFilter> filters;
 	
-	TorConfigNodeFilter(TorConfig config) {
+	public TorConfigNodeFilter(TorConfig config) {
 		this.filters = new HashMap<String, ConfigNodeFilter>();
 		addFilter(filters, EXCLUDE_NODES_FILTER, config.getExcludeNodes());
 		addFilter(filters, EXCLUDE_EXIT_NODES_FILTER, config.getExcludeExitNodes());
@@ -95,6 +95,19 @@ public class TorConfigNodeFilter {
 			}
 		}
 		return filtered;
+	}
+
+	/**
+	 * Whether router may be an entry guard under EntryNodes and
+	 * ExcludeNodes (guard-spec FILTERED_GUARDS).
+	 */
+	public boolean isAllowedAsGuard(Router router) {
+		return isIncludedByFilter(router, ENTRY_NODES_FILTER) && !isExcludedByFilter(router, EXCLUDE_NODES_FILTER);
+	}
+
+	/** Whether router may be used on a circuit at all under ExcludeNodes. */
+	public boolean isAllowedOnCircuit(Router router) {
+		return !isExcludedByFilter(router, EXCLUDE_NODES_FILTER);
 	}
 
 	boolean isExitNodeIncluded(Router exitRouter) {
