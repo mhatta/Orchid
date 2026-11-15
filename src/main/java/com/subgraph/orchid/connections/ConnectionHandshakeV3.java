@@ -4,8 +4,10 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.math.BigInteger;
 import java.security.GeneralSecurityException;
+import java.security.MessageDigest;
 import java.security.Principal;
 import java.security.PublicKey;
+import java.security.cert.CertificateEncodingException;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
@@ -18,10 +20,12 @@ import javax.net.ssl.SSLSocket;
 import com.subgraph.orchid.Cell;
 import com.subgraph.orchid.ConnectionHandshakeException;
 import com.subgraph.orchid.ConnectionIOException;
+import com.subgraph.orchid.Router;
 
 public class ConnectionHandshakeV3 extends ConnectionHandshake {
 
     private X509Certificate linkCertificate, identityCertificate;
+    private CertsCell certs;
 	
 	ConnectionHandshakeV3(ConnectionImpl connection, SSLSocket socket) {
 		super(connection, socket);
@@ -37,7 +41,7 @@ public class ConnectionHandshakeV3 extends ConnectionHandshake {
 	}
 	
 	void recvCerts() throws ConnectionHandshakeException  {
-		final CertsCell certs = parseCertsCell(expectCell(Cell.CERTS));
+		certs = parseCertsCell(expectCell(Cell.CERTS));
 		linkCertificate = certs.linkCertificate;
 		identityCertificate = certs.identityCertificate;
 	}
@@ -52,7 +56,8 @@ public class ConnectionHandshakeV3 extends ConnectionHandshake {
 	/**
 	 * The certificates of a CERTS cell.  Types 1 and 2 are X.509 and are
 	 * parsed; types 4, 5 (Ed25519 certificates) and 7 (RSA to Ed25519 cross
-	 * certificate) use Tor's own formats and are kept as they were received.
+	 * certificate) use Tor's own formats; they are kept as received and
+	 * checked by {@link Ed25519LinkAuthentication}.
 	 */
 	static final class CertsCell {
 		X509Certificate linkCertificate;
@@ -163,8 +168,69 @@ public class ConnectionHandshakeV3 extends ConnectionHandshake {
 		}
 	
 		RSAPublicKey rsa2 = (RSAPublicKey) linkCertificate.getPublicKey();
-		if(!getConnectionPublicKey().getModulus().equals(rsa2.getModulus())) {
+		final RSAPublicKey connectionKey = getConnectionPublicKey();
+		if(connectionKey == null || !connectionKey.getModulus().equals(rsa2.getModulus())) {
 			throw new ConnectionHandshakeException("Link certificate in CERTS cell does not match connection certificate");
+		}
+
+		verifyEd25519Identity(rsaPublicKey);
+	}
+
+	/*
+	 * tor-spec, "Validating a relay's CERTS cell": a relay that sends the
+	 * Ed25519 certificates is authenticated by them as well, and its
+	 * Ed25519 identity must be the one the directory lists for it.  A relay
+	 * listed with an Ed25519 identity must send them: otherwise anyone who
+	 * has (or has factored) the 1024 bit RSA identity key could pose as it.
+	 * A router whose Ed25519 identity is not known (no descriptor yet, a
+	 * fallback directory, a bridge without a descriptor) is authenticated
+	 * by its RSA identity alone, as before.
+	 */
+	private void verifyEd25519Identity(RSAPublicKey rsaIdentity) throws ConnectionHandshakeException {
+		final Router router = connection.getRouter();
+		final byte[] expected = (router == null) ? null : router.getEd25519Identity();
+		checkEd25519Identity(certs, expected, rsaIdentity,
+				getConnectionCertificateEncoding(), System.currentTimeMillis() / 1000);
+	}
+
+	/**
+	 * The Ed25519 part of the CERTS check, apart from the connection: the
+	 * authenticated Ed25519 identity, or null if certs has no Ed25519
+	 * certificates and expectedIdentity is null.
+	 */
+	static byte[] checkEd25519Identity(CertsCell certs, byte[] expectedIdentity, RSAPublicKey rsaIdentity,
+			byte[] tlsCertificate, long nowSeconds) throws ConnectionHandshakeException {
+		final boolean hasEdCerts = certs.ed25519SigningCertificate != null
+				|| certs.ed25519TlsLinkCertificate != null || certs.rsaEd25519CrossCertificate != null;
+		if(!hasEdCerts) {
+			if(expectedIdentity != null) {
+				throw new ConnectionHandshakeException("Router has an Ed25519 identity but sent no Ed25519 certificates");
+			}
+			return null;
+		}
+		final byte[] identity;
+		try {
+			identity = Ed25519LinkAuthentication.verify(certs.ed25519SigningCertificate,
+					certs.ed25519TlsLinkCertificate, certs.rsaEd25519CrossCertificate, rsaIdentity,
+					tlsCertificate, nowSeconds);
+		} catch (RuntimeException e) {
+			throw new ConnectionHandshakeException("Malformed Ed25519 certificates in CERTS cell: "+ e);
+		}
+		if(expectedIdentity != null && !MessageDigest.isEqual(expectedIdentity, identity)) {
+			throw new ConnectionHandshakeException("Router Ed25519 identity does not match the Ed25519 certificates");
+		}
+		return identity;
+	}
+
+	private byte[] getConnectionCertificateEncoding() throws ConnectionHandshakeException {
+		final X509Certificate cert = getConnectionCertificateFromSession(socket.getSession());
+		if(cert == null) {
+			return null;
+		}
+		try {
+			return cert.getEncoded();
+		} catch (CertificateEncodingException e) {
+			throw new ConnectionHandshakeException("Cannot encode the TLS certificate of the connection");
 		}
 	}
 
