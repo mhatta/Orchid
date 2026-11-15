@@ -6,6 +6,7 @@ import static org.junit.Assert.fail;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
@@ -22,6 +23,17 @@ import com.subgraph.orchid.TorException;
 public class DataDirectoryTest {
 	@Rule
 	public TemporaryFolder tmp = new TemporaryFolder();
+
+	/*
+	 * Whether the default file system has POSIX permissions.  Not
+	 * Files.getFileStore(path): it looks the path up in /proc/mounts and
+	 * throws "Mount point not found" in chroots that do not list their
+	 * mounts there, such as the pbuilder chroots of Debian's
+	 * reproducible-builds infrastructure.
+	 */
+	private static boolean posixPermissions() {
+		return FileSystems.getDefault().supportedFileAttributeViews().contains("posix");
+	}
 
 	private static void assertRejected(File dir, String messagePart) {
 		try {
@@ -42,7 +54,7 @@ public class DataDirectoryTest {
 		final File dir = new File(tmp.getRoot(), "a/b/orchid");
 		DataDirectory.prepare(dir);
 		assertTrue(dir.isDirectory());
-		Assume.assumeTrue(Files.getFileStore(dir.toPath()).supportsFileAttributeView("posix"));
+		Assume.assumeTrue(posixPermissions());
 		final Set<PosixFilePermission> perms = Files.getPosixFilePermissions(dir.toPath());
 		assertEquals(PosixFilePermissions.fromString("rwx------"), perms);
 	}
@@ -55,7 +67,7 @@ public class DataDirectoryTest {
 	@Test
 	public void testExistingDirectoryIsRestrictedToOwner() throws IOException {
 		final File dir = tmp.newFolder("open");
-		Assume.assumeTrue(Files.getFileStore(dir.toPath()).supportsFileAttributeView("posix"));
+		Assume.assumeTrue(posixPermissions());
 		Files.setPosixFilePermissions(dir.toPath(), PosixFilePermissions.fromString("rwxr-xr-x"));
 		DataDirectory.prepare(dir);
 		assertEquals(PosixFilePermissions.fromString("rwx------"), Files.getPosixFilePermissions(dir.toPath()));
