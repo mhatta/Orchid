@@ -74,6 +74,22 @@ public abstract class TorRequest {
         }
     }
     
+    /**
+     * Whether the server's certificate chain must be trusted (true, the
+     * default from {@link ApplicationProperties#getEnforceSslCertificates()}).
+     *
+     * <p>false accepts a certificate from any issuer, a self-signed one
+     * included, but since 2.5.2 the certificate must still be valid for the
+     * host name of the URL: {@link com.subgraph.orchid.sockets.sslengine.SSLEngineSSLSocket}
+     * checks the name whatever this setting.  A server whose certificate
+     * names another host, which 2.5.1 and earlier accepted here, is refused.
+     * Without that check, false would let any exit relay answer with a
+     * certificate of its own making; it remains unsafe all the same, as the
+     * exit relay can still present a self-signed certificate for the right
+     * name.  To trust a particular server, add its certificate with
+     * {@link ApplicationProperties#setAdditionalSslCertificates} and keep
+     * this true.
+     */
     public TorRequest setEnforceSslCertificates(Boolean enforceSslCertificates){
         this.enforceSslCertificates = enforceSslCertificates;
         return this;

@@ -9,7 +9,11 @@ import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509ExtendedTrustManager;
 
 /**
- * A TLS context that accepts any certificate for any host.
+ * A TLS context that accepts any certificate chain, trusted or not, for
+ * any host.  The context itself checks nothing; but the sockets Orchid's
+ * HTTP requests use ({@link com.subgraph.orchid.sockets.sslengine.SSLEngineSSLSocket})
+ * check the host name on their own since 2.5.2, so with them a
+ * certificate must still be issued for the server's name.
  *
  * @deprecated Over Tor, the exit relay can read and modify every connection
  * made with this context.  It remains only for compatibility with

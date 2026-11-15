@@ -159,6 +159,13 @@ public class SSLEngineManager {
                 handshakeDone = true;
             }
         }
+        /*
+         * Only now, after the host name check and outside the locks (a
+         * listener may read, write or call getSession()), is the handshake
+         * complete.  A handshake that fails, or a certificate for another
+         * name, is not reported as completed.
+         */
+        handshakeFinished();
     }
 
     /* Called with both locks held: remember why, and close the connection. */
@@ -505,9 +512,6 @@ public class SSLEngineManager {
             peerNetworkBuffer.compact();
             logResult(result);
 
-            if(result.getHandshakeStatus() == HandshakeStatus.FINISHED) {
-                    handshakeFinished();
-            }
             switch(result.getStatus()) {
 
             case CLOSED:
@@ -534,9 +538,6 @@ public class SSLEngineManager {
         final SSLEngineResult result = engine.wrap(emptyBuffer, myNetworkBuffer);
         logResult(result);
 
-        if(result.getHandshakeStatus() == HandshakeStatus.FINISHED) {
-            handshakeFinished();
-        }
 
         if(result.getStatus() == Status.CLOSED) {
             try {
@@ -568,6 +569,13 @@ public class SSLEngineManager {
         logger.debug("Result status="+result.getStatus() + " hss="+ result.getHandshakeStatus() + " consumed = "+ result.bytesConsumed() + " produced = "+ result.bytesProduced());
     }
 
+    /*
+     * Called once, by startHandshake(), when the initial handshake and the
+     * host name check have succeeded.  Later handshake messages (TLS 1.3
+     * session tickets, which some engines report as FINISHED) are not
+     * reported: listeners, as with JSSE's sockets, hear of the handshake
+     * that set up the connection.
+     */
     private void handshakeFinished() {
         if(handshakeCallback != null) {
             handshakeCallback.handshakeCompleted();

@@ -134,8 +134,19 @@ public class SSLEngineSSLSocket extends SSLSocket implements HandshakeCallbackHa
 		engine.setEnabledProtocols(protocols);
 	}
 
+	/**
+	 * The session, after the handshake: as with JSSE's sockets, this runs
+	 * the handshake if it has not run yet.  If the handshake or the host
+	 * name check failed, an invalid session with cipher suite
+	 * SSL_NULL_WITH_NULL_NULL and no peer certificates.
+	 */
 	@Override
 	public SSLSession getSession() {
+		try {
+			manager.startHandshake();
+		} catch (IOException e) {
+			return NullSSLSession.INSTANCE;
+		}
 		return engine.getSession();
 	}
 
@@ -390,6 +401,10 @@ public class SSLEngineSSLSocket extends SSLSocket implements HandshakeCallbackHa
 		return outputStream;
 	}
 
+	/*
+	 * Called by SSLEngineManager once the handshake and the host name check
+	 * have succeeded, on the thread that ran the handshake.
+	 */
 	public void handshakeCompleted() {
 		if(listenerList.isEmpty()) {
 			return;

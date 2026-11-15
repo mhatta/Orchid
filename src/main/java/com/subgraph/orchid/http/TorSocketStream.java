@@ -87,6 +87,20 @@ public abstract class TorSocketStream extends InputStream {
     }
 
     /**
+     * The message for a failed TLS handshake with the URL's host.  A
+     * certificate for another host name is refused even with
+     * setEnforceSslCertificates(false) (since 2.5.2), so that setting is
+     * offered only for an untrusted certificate.
+     */
+    protected String tlsFailureMessage(IOException e) {
+        return "TLS handshake with "+ getHost() +" failed ("+ e.getMessage() +").  If the server's certificate"
+                + " is not trusted, add it with ApplicationProperties.setAdditionalSslCertificates(), or, only if you"
+                + " accept that a malicious exit relay can read and modify the connection, configure"
+                + " [TorRequest].setEnforceSslCertificates(false).  A certificate issued for another host name"
+                + " is refused in any case.";
+    }
+
+    /**
      * Write an HTTP request.  Unlike a PrintWriter, this reports I/O errors
      * (a failed TLS handshake among them) instead of hiding them.
      */

@@ -119,6 +119,11 @@ public class ApplicationProperties {
         return ENFORCE_SSL_CERTIFICATES;
     }
     
+    /**
+     * The default of {@link com.subgraph.orchid.http.TorRequest#setEnforceSslCertificates(Boolean)}.
+     * false accepts untrusted certificates, but not, since 2.5.2, a
+     * certificate for another host name.
+     */
     public static void setEnforceSslCertificates(boolean enforceSslCertificates){
         ENFORCE_SSL_CERTIFICATES = enforceSslCertificates;
     }

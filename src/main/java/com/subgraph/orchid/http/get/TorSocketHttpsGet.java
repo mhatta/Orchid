@@ -22,7 +22,7 @@ public class TorSocketHttpsGet extends TorSocketStream {
             try{
                 openTlsSocket();
             } catch(IOException e){
-                throw new Exception("TLS certificate check failed. Either add the server certificate with ApplicationProperties.setAdditionalSslCertificates() or, only if you accept that a malicious exit relay can read and modify the connection, configure [TorRequest].setEnforceSslCertificates(false)", e);
+                throw new Exception(tlsFailureMessage(e), e);
             }
             inputStream = sslSocket.getInputStream();
             writeRequest(sslSocket.getOutputStream(),

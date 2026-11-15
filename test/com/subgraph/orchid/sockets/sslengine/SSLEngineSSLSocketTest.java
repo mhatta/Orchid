@@ -20,8 +20,11 @@ import java.util.Arrays;
 import java.util.Random;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
+import javax.net.ssl.HandshakeCompletedEvent;
+import javax.net.ssl.HandshakeCompletedListener;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLException;
@@ -29,6 +32,7 @@ import javax.net.ssl.SSLServerSocket;
 import javax.net.ssl.SSLSocket;
 import javax.net.ssl.SSLEngine;
 import javax.net.ssl.SSLPeerUnverifiedException;
+import javax.net.ssl.SSLSession;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.TrustManagerFactory;
 import javax.net.ssl.X509ExtendedTrustManager;
@@ -514,6 +518,95 @@ public class SSLEngineSSLSocketTest {
 			} catch(SSLException e) {
 				// expected
 			}
+		} finally {
+			s.close();
+		}
+	}
+
+	/*
+	 * L9: a certificate for another name is no completed handshake.  The
+	 * listeners hear nothing, and getSession() returns an invalid session
+	 * without peer certificates, as with JSSE's sockets.
+	 */
+	@Test(timeout = 30000)
+	public void testRefusedNameIsNotReportedAsCompleted() throws Exception {
+		startSilentServer();
+		final Socket raw = new Socket(InetAddress.getLoopbackAddress(), server.getLocalPort());
+		raw.setSoTimeout(10000);
+		final SSLEngineSSLSocket s = new SSLEngineSSLSocket(raw, nameBlindContext(), "wrong.orchid.invalid", 443);
+		final AtomicInteger completed = new AtomicInteger();
+		s.addHandshakeCompletedListener(new HandshakeCompletedListener() {
+			public void handshakeCompleted(HandshakeCompletedEvent event) {
+				completed.incrementAndGet();
+			}
+		});
+		try {
+			try {
+				s.startHandshake();
+				fail("certificate for "+ HOST +" accepted for wrong.orchid.invalid");
+			} catch(SSLPeerUnverifiedException e) {
+				// expected
+			}
+			assertEquals(0, completed.get());
+			final SSLSession session = s.getSession();
+			assertFalse(session.isValid());
+			assertEquals("SSL_NULL_WITH_NULL_NULL", session.getCipherSuite());
+			try {
+				session.getPeerCertificates();
+				fail("peer certificates of a refused server");
+			} catch(SSLPeerUnverifiedException e) {
+				// expected
+			}
+		} finally {
+			s.close();
+		}
+	}
+
+	/* A good handshake is reported once, after the name check, with a valid session. */
+	@Test(timeout = 30000)
+	public void testCompletedHandshakeIsReportedOnce() throws Exception {
+		startServer(bestProtocol(), new ServerBehaviour() {
+			public void serve(SSLSocket s) throws IOException {
+				readFully(s.getInputStream(), 4);
+				s.getOutputStream().write("pong".getBytes("US-ASCII"));
+				s.getOutputStream().flush();
+				s.getInputStream().read();
+			}
+		});
+		final SSLEngineSSLSocket s = connect(HOST);
+		final AtomicInteger completed = new AtomicInteger();
+		final AtomicReference<SSLSession> seen = new AtomicReference<SSLSession>();
+		s.addHandshakeCompletedListener(new HandshakeCompletedListener() {
+			public void handshakeCompleted(HandshakeCompletedEvent event) {
+				completed.incrementAndGet();
+				// A listener may ask the socket for its session.
+				seen.set(((SSLSocket) event.getSocket()).getSession());
+			}
+		});
+		try {
+			s.startHandshake();
+			s.startHandshake();
+			s.getOutputStream().write("ping".getBytes("US-ASCII"));
+			s.getOutputStream().flush();
+			assertArrayEquals("pong".getBytes("US-ASCII"), readFully(s.getInputStream(), 4));
+			assertEquals(1, completed.get());
+			assertTrue(seen.get().isValid());
+			assertTrue(s.getSession().isValid());
+			assertTrue(s.getSession().getPeerCertificates().length > 0);
+		} finally {
+			s.close();
+		}
+	}
+
+	/* getSession() runs the handshake if it has not run yet, as JSSE's sockets do. */
+	@Test(timeout = 30000)
+	public void testGetSessionRunsTheHandshake() throws Exception {
+		startSilentServer();
+		final SSLEngineSSLSocket s = connect(HOST);
+		try {
+			final SSLSession session = s.getSession();
+			assertTrue(session.isValid());
+			assertFalse("SSL_NULL_WITH_NULL_NULL".equals(session.getCipherSuite()));
 		} finally {
 			s.close();
 		}
