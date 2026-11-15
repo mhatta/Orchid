@@ -428,7 +428,8 @@ public class ConnectionImpl implements Connection, DashboardRenderable {
         updateLastActivity();
         final int command = cell.getCommand();
 
-        if(command == Cell.RELAY) {
+        /* Inbound RELAY_EARLY goes to its circuit too, which closes itself. */
+        if(command == Cell.RELAY || command == Cell.RELAY_EARLY) {
             processRelayCell(cell);
             return;
         }

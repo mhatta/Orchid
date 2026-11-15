@@ -72,4 +72,13 @@ public class LinkControlCellTest {
 		}
 		assertFalse(c.isClosed());
 	}
+
+	@Test
+	public void testRelayEarlyGoesToItsCircuit() throws Exception {
+		// For a circuit that is not open it is dropped like any relay cell.
+		final ConnectionImpl c = connection();
+		c.setHandshakeComplete();
+		c.processCell(CellImpl.createCell(0x80000001, Cell.RELAY_EARLY));
+		assertFalse(c.isClosed());
+	}
 }

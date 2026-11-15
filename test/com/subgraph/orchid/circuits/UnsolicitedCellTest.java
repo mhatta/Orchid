@@ -109,4 +109,74 @@ public class UnsolicitedCellTest {
 		relay.sendBackward(EXIT, RelayCell.RELAY_SENDME, stream.getStreamId(), new byte[0]);
 		assertClosedForProtocolError(relay, circuit);
 	}
+
+	/* H3: cells a client never expects close the circuit instead of being dropped. */
+
+	@Test(timeout = 20000)
+	public void testDropCellClosesCircuit() throws InterruptedException {
+		final FakeRelay relay = new FakeRelay(3);
+		final CircuitImpl circuit = CircuitExtenderTest.buildCircuit(relay);
+		relay.sendBackward(1, RelayCell.RELAY_DROP, 0, new byte[10]);
+		assertClosedForProtocolError(relay, circuit);
+	}
+
+	@Test(timeout = 20000)
+	public void testUnknownRelayCommandClosesCircuit() throws InterruptedException {
+		for(int command: new int[] { 0, 16, 41, 43, 99, 255 }) {
+			final FakeRelay relay = new FakeRelay(3);
+			final CircuitImpl circuit = CircuitExtenderTest.buildCircuit(relay);
+			relay.sendBackward(EXIT, command, 0, new byte[4]);
+			assertClosedForProtocolError(relay, circuit);
+			assertTrue(circuit.getDestroyReason(), circuit.getDestroyReason().contains("("+ command +")"));
+		}
+	}
+
+	@Test(timeout = 20000)
+	public void testOnionServiceCellsForAServiceCloseCircuit() throws InterruptedException {
+		final FakeRelay relay = new FakeRelay(3);
+		final CircuitImpl circuit = CircuitExtenderTest.buildCircuit(relay);
+		relay.sendBackward(EXIT, RelayCell.RELAY_COMMAND_INTRODUCE2, 0, new byte[64]);
+		assertClosedForProtocolError(relay, circuit);
+	}
+
+	@Test(timeout = 20000)
+	public void testForwardDirectionCellClosesCircuit() throws InterruptedException {
+		for(int command: new int[] { RelayCell.RELAY_BEGIN, RelayCell.RELAY_EXTEND2, RelayCell.RELAY_TRUNCATE }) {
+			final FakeRelay relay = new FakeRelay(3);
+			final CircuitImpl circuit = CircuitExtenderTest.buildCircuit(relay);
+			relay.sendBackward(EXIT, command, 0, new byte[4]);
+			assertClosedForProtocolError(relay, circuit);
+		}
+	}
+
+	@Test(timeout = 20000)
+	public void testInboundRelayEarlyClosesCircuit() throws InterruptedException {
+		final FakeRelay relay = new FakeRelay(3);
+		final CircuitImpl circuit = CircuitExtenderTest.buildCircuit(relay);
+		final Cell early = CellImpl.createCell(circuit.getCircuitId(), Cell.RELAY_EARLY);
+		circuit.deliverRelayCell(early);
+		assertClosedForProtocolError(relay, circuit);
+		assertTrue(circuit.getDestroyReason(), circuit.getDestroyReason().contains("RELAY_EARLY"));
+	}
+
+	@Test(timeout = 20000)
+	public void testUnrecognizedCellClosesCircuit() throws InterruptedException {
+		final FakeRelay relay = new FakeRelay(3);
+		final CircuitImpl circuit = CircuitExtenderTest.buildCircuit(relay);
+		final Cell garbage = CellImpl.createCell(circuit.getCircuitId(), Cell.RELAY);
+		garbage.putByteArray(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 });
+		circuit.deliverRelayCell(garbage);
+		assertClosedForProtocolError(relay, circuit);
+		assertTrue(circuit.getDestroyReason(), circuit.getDestroyReason().contains("not recognized"));
+	}
+
+	@Test(timeout = 20000)
+	public void testExpectedCellsStillWork() throws InterruptedException {
+		final FakeRelay relay = new FakeRelay(3);
+		final CircuitImpl circuit = CircuitExtenderTest.buildCircuit(relay);
+		final StreamImpl stream = circuit.createNewStream();
+		relay.sendBackward(EXIT, RelayCell.RELAY_DATA, stream.getStreamId(), new byte[] { 1, 2, 3 });
+		relay.drain();
+		assertNull(circuit.getDestroyReason());
+	}
 }

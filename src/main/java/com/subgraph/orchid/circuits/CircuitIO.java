@@ -108,14 +108,21 @@ public class CircuitIO implements DashboardRenderable {
         return destroyReason;
     }
 
+    /*
+     * The relay cell for the hop that recognizes it, or null if none does:
+     * then the circuit is closed, with a DESTROY to the first hop, since
+     * cells can no longer be decrypted in step with the relays.
+     */
     private RelayCell decryptRelayCell(Cell cell) {
         for(CircuitNode node: circuit.getNodeList()) {
             if(node.decryptBackwardCell(cell)) {
                 return RelayCellImpl.createFromCell(node, cell);
             }
         }
-        destroyCircuit();
-        throw new TorException("Could not decrypt relay cell");
+        logger.warn("Closing circuit "+ circuit +": protocol error, a relay cell was not recognized by any hop");
+        sendDestroyCell(Cell.ERROR_PROTOCOL);
+        destroyCircuit("protocol error: relay cell not recognized by any hop");
+        return null;
     }
 
     // Return null on timeout or when the circuit has been destroyed
@@ -261,8 +268,22 @@ public class CircuitIO implements DashboardRenderable {
 
     /* This is called by the cell reading thread in ConnectionImpl to deliver RELAY cells. */
     void deliverRelayCell(Cell cell) {
+        if(cell.getCommand() == Cell.RELAY_EARLY) {
+            /*
+             * Relays never send RELAY_EARLY towards the client.  One that
+             * does may be marking the circuit for a colluding relay (the
+             * 2014 RELAY_EARLY tagging attack); Tor closes the circuit too.
+             */
+            logger.warn("Closing circuit "+ circuit +": protocol error, inbound RELAY_EARLY cell");
+            sendDestroyCell(Cell.ERROR_PROTOCOL);
+            destroyCircuit("protocol error: inbound RELAY_EARLY cell");
+            return;
+        }
         circuit.getStatus().updateDirtyTimestamp();
         final RelayCell relayCell = decryptRelayCell(cell);
+        if(relayCell == null) {
+            return;
+        }
         logRelayCell("Dispatching: ", relayCell);
         switch(relayCell.getRelayCommand()) {
         case RelayCell.RELAY_TRUNCATED:
@@ -302,10 +323,30 @@ public class CircuitIO implements DashboardRenderable {
         case RelayCell.RELAY_BEGIN:
         case RelayCell.RELAY_BEGIN_DIR:
         case RelayCell.RELAY_EXTEND:
+        case RelayCell.RELAY_EXTEND2:
         case RelayCell.RELAY_RESOLVE:
         case RelayCell.RELAY_TRUNCATE:
-            destroyCircuit();
-            throw new TorException("Unexpected 'forward' direction relay cell type: "+ relayCell.getRelayCommand());
+            rejectCell(relayCell, "relay cell "+ RelayCellImpl.commandToDescription(relayCell.getRelayCommand())
+                    +" in the wrong direction (towards the client)");
+            break;
+        case RelayCell.RELAY_DROP:
+            /*
+             * Long-range padding.  Orchid negotiates no padding, so a relay
+             * that sends DROP cells is sending a signal that the client
+             * would otherwise swallow without trace (a DropMark attack).
+             */
+            rejectCell(relayCell, "RELAY_DROP cell, but no padding was negotiated");
+            break;
+        default:
+            /*
+             * Every other command, known or not, needs something Orchid does
+             * not do (an onion service, conflux, flow control) or is
+             * unassigned.  Dropping it silently would give the relay a
+             * channel to the other end of the circuit that leaves no trace.
+             */
+            rejectCell(relayCell, "unexpected relay command "+ RelayCellImpl.commandToDescription(relayCell.getRelayCommand())
+                    +" ("+ relayCell.getRelayCommand() +")");
+            break;
         }
     }
 
