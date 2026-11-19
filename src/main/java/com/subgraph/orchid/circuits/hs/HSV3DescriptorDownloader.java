@@ -49,6 +49,12 @@ public class HSV3DescriptorDownloader {
 	public HSV3Descriptor downloadDescriptor() {
 		for(Router d: directories) {
 			final HSV3Descriptor descriptor = downloadDescriptorFrom(d);
+			if(descriptor != null && !hiddenService.isRevisionAcceptable(descriptor)) {
+				/* An older descriptor than one already seen: try another HSDir. */
+				logger.info("HSDir "+ d +" returned an old descriptor (revision "+ descriptor.getRevisionCounter()
+						+") for "+ hiddenService.getOnionAddressForLogging() +"; trying another");
+				continue;
+			}
 			if(descriptor != null) {
 				return descriptor;
 			}

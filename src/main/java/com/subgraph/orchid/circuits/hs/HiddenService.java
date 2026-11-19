@@ -2,6 +2,7 @@ package com.subgraph.orchid.circuits.hs;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.TreeMap;
 
 import com.subgraph.orchid.HiddenServiceCircuit;
 import com.subgraph.orchid.TorConfig;
@@ -86,6 +87,9 @@ public class HiddenService {
 		return config.getOnionClientAuthKey(address.getOnionAddress());
 	}
 
+	/* Time period number -> highest revision counter accepted for it. */
+	private final TreeMap<Long, Long> highestRevisions = new TreeMap<Long, Long>();
+
 	synchronized boolean hasCurrentDescriptor() {
 		return (descriptor != null && !descriptor.isExpired());
 	}
@@ -94,8 +98,37 @@ public class HiddenService {
 		return descriptor;
 	}
 
+	/**
+	 * Keep descriptor as the current one, unless it is older than one
+	 * already accepted for its time period: see {@link #isRevisionAcceptable}.
+	 */
 	synchronized void setDescriptor(HSV3Descriptor descriptor) {
+		if(descriptor != null && !isRevisionAcceptable(descriptor)) {
+			return;
+		}
 		this.descriptor = descriptor;
+		if(descriptor != null) {
+			final Long highest = highestRevisions.get(descriptor.getTimePeriodNumber());
+			if(highest == null || descriptor.getRevisionCounter() > highest) {
+				highestRevisions.put(descriptor.getTimePeriodNumber(), descriptor.getRevisionCounter());
+			}
+			/* Revisions of two time periods are enough: the current and the one before. */
+			highestRevisions.headMap(descriptor.getTimePeriodNumber() - 1).clear();
+		}
+	}
+
+	/**
+	 * False if descriptor has a lower revision counter than a descriptor
+	 * already accepted for the same time period (rend-spec-v3,
+	 * "revision-counter").  An HSDir could otherwise answer with an older
+	 * descriptor of the service that has not yet expired, with
+	 * introduction points that the service no longer uses.  The same
+	 * revision is accepted: it is the same descriptor fetched again.
+	 * Revisions are remembered for as long as Orchid runs.
+	 */
+	synchronized boolean isRevisionAcceptable(HSV3Descriptor descriptor) {
+		final Long highest = highestRevisions.get(descriptor.getTimePeriodNumber());
+		return highest == null || descriptor.getRevisionCounter() >= highest;
 	}
 
 	/**
