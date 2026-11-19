@@ -27,6 +27,13 @@ jobs:
           # Orchid's minimum, and a current release
           - api-level: 24
             target: default
+          # Between them: TorConnectionTest logs whether the platform's own
+          # TLS works over a Tor stream (it does not on API 24, which is why
+          # AndroidSSLSocketFactory exists), to find where it starts to.
+          - api-level: 26
+            target: default
+          - api-level: 28
+            target: default
           - api-level: 35
             target: google_apis
 

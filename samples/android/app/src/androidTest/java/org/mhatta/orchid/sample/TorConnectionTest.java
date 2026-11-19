@@ -79,6 +79,44 @@ public class TorConnectionTest {
         assertTrue("not through Tor: " + answer, TorCheck.isTor(answer));
 
         refusesCertificateForAnotherName(orchid.client());
+        platformTlsOverTor(orchid.client());
+    }
+
+    /*
+     * Not a check, a measurement: does the platform's own SSLSocket (not
+     * AndroidSSLSocketFactory) complete a handshake over a Tor stream on
+     * this API level?  On API 24 it does not ("Socket closed").  The result
+     * goes to logcat (logcat.txt in the CI artifact) and never fails the
+     * test; the trust manager is the sample's, with the extra roots, so
+     * that a missing root does not hide the answer.
+     */
+    private static void platformTlsOverTor(TorClient tor) throws Exception {
+        final String host = "check.torproject.org";
+        final String api = "API " + android.os.Build.VERSION.SDK_INT;
+        final Socket raw;
+        try {
+            raw = tor.getSocketFactory("orchid-sample-platform-tls").createSocket(host, 443);
+        } catch (IOException e) {
+            Log.w(TorCheck.TAG, "platform TLS over Tor on " + api + ": not tested, cannot reach " + host, e);
+            return;
+        }
+        final SSLContext tls = SSLContext.getInstance("TLS");
+        tls.init(null, new TrustManager[] { TorCheck.platformTrustManager() }, null);
+        final javax.net.ssl.SSLSocket s =
+                (javax.net.ssl.SSLSocket) tls.getSocketFactory().createSocket(raw, host, 443, true);
+        try {
+            s.startHandshake();
+            Log.i(TorCheck.TAG, "platform TLS over Tor on " + api + ": works ("
+                    + s.getSession().getProtocol() + ", " + s.getSession().getCipherSuite() + ")");
+        } catch (IOException e) {
+            Log.i(TorCheck.TAG, "platform TLS over Tor on " + api + ": fails (" + e + ")");
+        } finally {
+            try {
+                s.close();
+            } catch (IOException e) {
+                // closing a failed socket
+            }
+        }
     }
 
     /*
