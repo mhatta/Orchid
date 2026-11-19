@@ -1,0 +1,43 @@
+router seedrelay 192.0.2.10 9001 0 0
+identity-ed25519
+-----BEGIN ED25519 CERT-----
+AQQABvz+AY3cyRAYVfDI2pS7wrmc3ZJyBHSFRQ6xmBtMs5GtxOwkAQAgBADf6o1L
+-----END ED25519 CERT-----
+master-key-ed25519 3+qNS2/qyxdhUA+mLYq+Rz0Qrd/V1M4ZA4PcL6dzGeg
+platform Tor 0.4.8.18 on Linux
+proto Cons=1-2 Desc=1-2 DirCache=2 FlowCtrl=1-2 HSDir=2 HSIntro=4-5 HSRend=1-2 Link=1-5 LinkAuth=1,3 Microdesc=1-2 Padding=2 Relay=1-4
+published 2026-11-18 12:00:00
+fingerprint 0123 4567 89AB CDEF 0123 4567 89AB CDEF 0123 4567
+uptime 86400
+bandwidth 1073741824 1073741824 5000000
+extra-info-digest 0123456789ABCDEF0123456789ABCDEF01234567
+onion-key
+-----BEGIN RSA PUBLIC KEY-----
+MIGJAoGBAL53G1wktpVtB9aNEfK7FXalUiQYDjn+KL4euMZ5Am8xJoGL7va6AUal
+vhK6lN7Jah1ogXMo2dr31rMTlML52lqmv4dPs/iooKdxVYVtWvnnI3RUPyFe8mJv
+uhOQ/bLxAXqNaizj9nPrtHE1YQSsDO+umEFxDErLPFenrniu9UQXAgMBAAE=
+-----END RSA PUBLIC KEY-----
+signing-key
+-----BEGIN RSA PUBLIC KEY-----
+MIGJAoGBAL53G1wktpVtB9aNEfK7FXalUiQYDjn+KL4euMZ5Am8xJoGL7va6AUal
+vhK6lN7Jah1ogXMo2dr31rMTlML52lqmv4dPs/iooKdxVYVtWvnnI3RUPyFe8mJv
+uhOQ/bLxAXqNaizj9nPrtHE1YQSsDO+umEFxDErLPFenrniu9UQXAgMBAAE=
+-----END RSA PUBLIC KEY-----
+onion-key-crosscert
+-----BEGIN CROSSCERT-----
+AAAA
+-----END CROSSCERT-----
+ntor-onion-key-crosscert 0
+-----BEGIN ED25519 CERT-----
+AQoABvz+AY3cyRAYVfDI2pS7wrmc3ZJyBHSFRQ6xmBtMs5GtxOwkAQAgBADf6o1L
+-----END ED25519 CERT-----
+hidden-service-dir
+contact nobody <nobody AT example dot net>
+ntor-onion-key Nk/EKrpXA+bcbmIePGPKOJuBdvMg3G6IcQKOJUvqvlk
+reject *:*
+tunnelled-dir-server
+router-sig-ed25519 AAAA
+router-signature
+-----BEGIN SIGNATURE-----
+AAAA
+-----END SIGNATURE-----

@@ -1,0 +1,29 @@
+dir-key-certificate-version 3
+dir-address 192.0.2.1:80
+fingerprint D387DFB1EB620EA030734BEF46E21DD5DF1CA37C
+dir-key-published 2026-11-19 10:06:54
+dir-key-expires 2027-02-17 12:06:54
+dir-identity-key
+-----BEGIN RSA PUBLIC KEY-----
+MIGJAoGBAKXU3bkRohXexAnmhwVrDc8uAw58DfXRT7RyRzuRHWM+Z8E9uedO6QtH
+BoxmZW8hXL799SUgTTi07vqv0zZ4KRSQv/0XVuOUWxGWYL0qlwiLcmzd4U5cBj/f
+ztUcavWq7HUXQtFCjzlfY8GmEqomtdOUadfceP5yjQop6CJwwt69AgMBAAE=
+-----END RSA PUBLIC KEY-----
+dir-signing-key
+-----BEGIN RSA PUBLIC KEY-----
+MIGJAoGBAJ9CE/yLdKhRNLSdnhMWrIL3HVRyaVtGB64624vIHPX+jipq5URsdKZ4
+7FSf9c53qCzlfcHuoEQy+XRkSKWxxI70RdiRQAl6bsRSfD8sFrGjm0rXKhdPyKrq
+ZBPYoL2DlJj93AGfaFqPyAHN3jocyXuW5lAehn/4Xf9T0La6tVwDAgMBAAE=
+-----END RSA PUBLIC KEY-----
+dir-key-crosscert
+-----BEGIN ID SIGNATURE-----
+aQQvQ0f9UFho05N0zT7PNd+dWtWHwgUU/5a8Dkkd4RLHTsoYwzF7LdPrtHGrmnrv
+SorPiAiLh3D6ZBHPrWi2TFwovLa+oUVxBbFt+ikcJXIMjUsfLhPQR9le+x+IuvMM
+JISyYACe4cD6BmsGjLe6Sr4r7Hf/k+RAxHuS93Fr83c=
+-----END ID SIGNATURE-----
+dir-key-certification
+-----BEGIN SIGNATURE-----
+JG/tC6+xzEVWMXgHUgYBq/ZqQqgebQf7y6Do/mDYMWxeKuuSTemb2qJgvVwO4U0o
+dPwdI44f9aRrzkkGTiPJPDTMNt/p5OfGTpDamdYCdd6LYxOJyhke5EeZM9/gtVne
+3U53PtW05S9QL4/nrYnnvQMuoX9tWYbpx/ams+OoFkk=
+-----END SIGNATURE-----

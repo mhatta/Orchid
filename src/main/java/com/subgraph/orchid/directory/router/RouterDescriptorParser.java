@@ -164,6 +164,10 @@ public class RouterDescriptorParser implements DocumentParser<RouterDescriptor> 
 		final Timestamp ts = fieldParser.parseTimestamp();
 		final String nsec = fieldParser.parseString();
 		fieldParser.parseString();
+		/* "(NSEC s)": an empty or bare "(" was a StringIndexOutOfBoundsException (found by fuzzing). */
+		if(nsec.length() < 2 || nsec.charAt(0) != '(') {
+			throw new TorParsingException("Invalid bandwidth history interval: "+ nsec);
+		}
 		final int interval = fieldParser.parseInteger(nsec.substring(1));
 		final BandwidthHistory history = new BandwidthHistory(ts, interval);
 		if(fieldParser.argumentsRemaining() == 0)
@@ -184,6 +188,11 @@ public class RouterDescriptorParser implements DocumentParser<RouterDescriptor> 
 	}
 	
 	private boolean verifyCurrentDescriptor(TorSignature signature) {
+		if(verifySignatures && currentDescriptor.getIdentityKey() == null) {
+			/* No signing-key line: was a NullPointerException (found by fuzzing). */
+			resultHandler.documentInvalid(currentDescriptor, "No identity key.");
+			return false;
+		}
 		if(verifySignatures && !fieldParser.verifySignedEntity(currentDescriptor.getIdentityKey(), signature)) {
 			resultHandler.documentInvalid(currentDescriptor, "Signature failed.");
 			fieldParser.logWarn("Signature failed for router: " + currentDescriptor.getNickname());

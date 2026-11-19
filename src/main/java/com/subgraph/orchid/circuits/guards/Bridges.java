@@ -13,6 +13,8 @@ import com.subgraph.orchid.Router;
 import com.subgraph.orchid.RouterDescriptor;
 import com.subgraph.orchid.TorConfig;
 import com.subgraph.orchid.config.TorConfigBridgeLine;
+import com.subgraph.orchid.crypto.TorPublicKey;
+import com.subgraph.orchid.data.HexDigest;
 import com.subgraph.orchid.crypto.TorRandom;
 import com.subgraph.orchid.directory.downloader.DirectoryRequestFailedException;
 import com.subgraph.orchid.logging.Logger;
@@ -40,6 +42,10 @@ public class Bridges {
             logger.debug("Downloading descriptor for bridge: "+ target);
             try {
                 final RouterDescriptor descriptor = directoryDownloader.downloadBridgeDescriptor(target);
+                if(descriptor != null && !isDescriptorOf(target, descriptor)) {
+                    logger.warn("Descriptor received from a bridge is for another router; the bridge is not used");
+                    return;
+                }
                 if(descriptor != null) {
                     logger.debug("Descriptor received for bridge "+ target +". Adding to list of usable bridges");
                     target.setDescriptor(descriptor);
@@ -138,8 +144,18 @@ public class Bridges {
 	
     private List<Runnable> createDownloadTasks() {
         final List<Runnable> tasks = new ArrayList<Runnable>();
+        int withoutFingerprint = 0;
         for(TorConfigBridgeLine line: config.getBridges()) {
+            if(line.getFingerprint() == null) {
+                withoutFingerprint++;
+            }
             tasks.add(new DescriptorDownloader(createBridgeFromLine(line)));
+        }
+        if(withoutFingerprint > 0) {
+            /* No address in the message: bridge addresses are meant to stay unpublished. */
+            logger.warn(withoutFingerprint +" of "+ tasks.size() +" bridge lines have no fingerprint. Orchid then"
+                    + " trusts whatever relay answers at that address on the first connection, which anyone on"
+                    + " the path to it can impersonate. Add the fingerprint from the bridge line you were given.");
         }
         return tasks;
     }
@@ -153,6 +169,24 @@ public class Bridges {
         }
     }
 	
+    /*
+     * The descriptor must be the bridge's own: its identity key must be the
+     * one the bridge proved in the link handshake, which is the fingerprint
+     * of the bridge line when it has one.  The descriptor's signature has
+     * been checked against that same key, so this binds the descriptor's
+     * onion keys and Ed25519 identity to the bridge.  Without the check a
+     * bridge could hand out the descriptor of another router, and circuits
+     * would be extended with that router's keys.
+     */
+    static boolean isDescriptorOf(BridgeRouter bridge, RouterDescriptor descriptor) {
+        final HexDigest identity = bridge.getIdentityHash();
+        final TorPublicKey key = descriptor.getIdentityKey();
+        if(identity == null || key == null) {
+            return false;
+        }
+        return identity.equals(key.getFingerprint());
+    }
+
     private BridgeRouterImpl createBridgeFromLine(TorConfigBridgeLine line) {
         final BridgeRouterImpl bridge = new BridgeRouterImpl(line.getAddress(), line.getPort());
         if(line.getFingerprint() != null) {

@@ -82,6 +82,10 @@ public class ConnectionHandshakeV3 extends ConnectionHandshake {
 	 *         the link or identity certificate.
 	 */
 	static CertsCell parseCertsCell(Cell cell) throws ConnectionHandshakeException {
+		if(cell.cellBytesRemaining() < 1) {
+			/* An empty CERTS cell ended in BufferUnderflowException (found by fuzzing). */
+			throw new ConnectionHandshakeException("Empty CERTS cell");
+		}
 		final int ncerts = cell.getByte();
 		if(ncerts != 2 && ncerts != 5) {
 			throw new ConnectionHandshakeException("Expecting 2 or 5 certificates and got "+ ncerts);

@@ -5,6 +5,7 @@ import java.util.List;
 
 import com.subgraph.orchid.Tor;
 import com.subgraph.orchid.TorException;
+import com.subgraph.orchid.TorParsingException;
 import com.subgraph.orchid.crypto.TorMessageDigest;
 import com.subgraph.orchid.encoders.Base64;
 import com.subgraph.orchid.encoders.Hex;
@@ -34,15 +35,31 @@ public class HexDigest {
 		return createFromString(builder.toString());
 	}
 
+	/** @throws TorParsingException if b32 is not base32. */
 	public static HexDigest createFromBase32String(String b32) {
-		return new HexDigest(Base32.base32Decode(b32));
+		try {
+			return new HexDigest(Base32.base32Decode(b32));
+		} catch (TorParsingException e) {
+			throw e;
+		} catch (RuntimeException e) {
+			throw new TorParsingException("Invalid base32 digest: "+ e.getMessage());
+		}
 	}
 
+	/**
+	 * @throws TorParsingException if fingerprint is not hex (it used to be
+	 *         a DecoderException, which the document parsers did not catch).
+	 */
 	public static HexDigest createFromString(String fingerprint) {
 		final String[] parts = fingerprint.split(" ");
 		if(parts.length > 1)
 			return createFromStringList(Arrays.asList(parts));
-		final byte[] digestData = Hex.decode(fingerprint);
+		final byte[] digestData;
+		try {
+			digestData = Hex.decode(fingerprint);
+		} catch (RuntimeException e) {
+			throw new TorParsingException("Invalid hex digest: "+ e.getMessage());
+		}
 		return new HexDigest(digestData);
 	}
 

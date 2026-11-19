@@ -174,17 +174,32 @@ public class DocumentFieldParserImpl implements DocumentFieldParser {
 
     @Override
     public HexDigest parseHexDigest() {
-        return HexDigest.createFromString(parseString());
+        final String s = parseString();
+        try {
+            return HexDigest.createFromString(s);
+        } catch (RuntimeException e) {
+            throw refused("hex digest", e);
+        }
     }
 
     @Override
     public HexDigest parseBase32Digest() {
-        return HexDigest.createFromBase32String(parseString());
+        final String s = parseString();
+        try {
+            return HexDigest.createFromBase32String(s);
+        } catch (RuntimeException e) {
+            throw refused("base32 digest", e);
+        }
     }
 
     @Override
     public HexDigest parseFingerprint() {
-        return HexDigest.createFromString(parseConcatenatedString());
+        final String s = parseConcatenatedString();
+        try {
+            return HexDigest.createFromString(s);
+        } catch (RuntimeException e) {
+            throw refused("fingerprint", e);
+        }
     }
 
     @Override
@@ -217,18 +232,32 @@ public class DocumentFieldParserImpl implements DocumentFieldParser {
             return Base64.decode(string.toString().getBytes("ISO-8859-1"));
         } catch (UnsupportedEncodingException e) {
             throw new TorException(e);
+        } catch (RuntimeException e) {
+            throw refused("base64 data", e);
         }
     }
 
     @Override
     public IPv4Address parseAddress() {
-        return IPv4Address.createFromString(getItem());
+        final String s = getItem();
+        try {
+            return IPv4Address.createFromString(s);
+        } catch (RuntimeException e) {
+            throw refused("IPv4 address", e);
+        }
     }
 
     @Override
     public TorPublicKey parsePublicKey() {
         final DocumentObject documentObject = parseObject();
-        return TorPublicKey.createFromPEMBuffer(documentObject.getContent());
+        final TorPublicKey key = TorPublicKey.createFromPEMBuffer(documentObject.getContent());
+        try {
+            /* Decode it now: TorPublicKey decodes lazily, and a bad key would otherwise fail where it is used. */
+            key.getRawBytes();
+        } catch (RuntimeException e) {
+            throw refused("RSA public key", e);
+        }
+        return key;
     }
 
 
@@ -244,8 +273,25 @@ public class DocumentFieldParserImpl implements DocumentFieldParser {
     @Override
     public TorSignature parseSignature() {
         final DocumentObject documentObject = parseObject();
-        TorSignature s = TorSignature.createFromPEMBuffer(documentObject.getContent());
-        return s;
+        try {
+            return TorSignature.createFromPEMBuffer(documentObject.getContent());
+        } catch (RuntimeException e) {
+            throw refused("signature", e);
+        }
+    }
+
+    /*
+     * The decoders (Hex, Base64, Base32, the PEM and IP address parsers)
+     * refuse bad input with their own runtime exceptions (DecoderException,
+     * IllegalArgumentException, index errors), which the document parsers
+     * did not catch: a directory cache could stop a parse with one bad
+     * character.  Found by fuzzing (L6).
+     */
+    private static TorParsingException refused(String what, RuntimeException e) {
+        if(e instanceof TorParsingException) {
+            return (TorParsingException) e;
+        }
+        return new TorParsingException("Invalid "+ what +": "+ e.getMessage());
     }
 
     @Override
@@ -296,7 +342,13 @@ public class DocumentFieldParserImpl implements DocumentFieldParser {
     }
 
     private String parseObjectHeader(String headerLine) {
-        if(!(headerLine.startsWith(BEGIN_TAG) && headerLine.endsWith(TAG_DELIMITER))){
+        if(headerLine == null) {
+            /* At the end of the document: was a NullPointerException (found by fuzzing). */
+            throw new TorParsingException("EOF reached where an object was expected.");
+        }
+        /* "-----BEGIN-----" (no keyword) was a StringIndexOutOfBoundsException (found by fuzzing). */
+        if(!(headerLine.startsWith(BEGIN_TAG +" ") && headerLine.endsWith(TAG_DELIMITER)
+                && headerLine.length() > BEGIN_TAG.length() + 1 + TAG_DELIMITER.length())) {
             throw new TorParsingException("Did not find expected object start tag.");
         }
         return headerLine.substring(BEGIN_TAG.length() + 1, headerLine.length() - TAG_DELIMITER.length());

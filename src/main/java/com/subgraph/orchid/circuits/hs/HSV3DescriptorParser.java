@@ -197,7 +197,8 @@ public final class HSV3DescriptorParser {
 
 	/* ---------------------------------------------------------------- inner layer */
 
-	private HSV3Descriptor parseInnerLayer(byte[] innerLayer, long lifetime, Ed25519Certificate signingKeyCert, long revisionCounter, byte[] descriptorSigningKey) {
+	/* Package-private for HSV3DescriptorFuzzer. */
+	HSV3Descriptor parseInnerLayer(byte[] innerLayer, long lifetime, Ed25519Certificate signingKeyCert, long revisionCounter, byte[] descriptorSigningKey) {
 		final List<Item> items = tokenize(innerLayer, 0, unpaddedLength(innerLayer));
 		if(items.isEmpty() || !"create2-formats".equals(items.get(0).keyword)) {
 			throw new TorParsingException("Encrypted layer does not start with create2-formats");

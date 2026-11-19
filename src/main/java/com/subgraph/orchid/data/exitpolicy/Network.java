@@ -7,6 +7,10 @@ public class Network {
 	public static final Network ALL_ADDRESSES = new Network(IPv4Address.createFromString("0.0.0.0"), 0, "*");
 	public static Network createFromString(String networkString) {
 		final String[] parts = networkString.split("/");
+		if(parts.length == 0) {
+			/* "/" was an ArrayIndexOutOfBoundsException (found by fuzzing). */
+			throw new TorParsingException("Invalid network: " + networkString);
+		}
 		final IPv4Address network = IPv4Address.createFromString(parts[0]);
 		if(parts.length == 1)
 			return new Network(network, 32, networkString);

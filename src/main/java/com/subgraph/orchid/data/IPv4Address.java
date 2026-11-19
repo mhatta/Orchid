@@ -13,7 +13,11 @@ public class IPv4Address {
 	}
 	
 	private static int parseStringToAddressData(String ipString) {
-		final String[] octets = ipString.split("\\.");
+		final String[] octets = ipString.split("\\.", -1);
+		if(octets.length != 4) {
+			/* Five octets ended in ArrayIndexOutOfBoundsException (found by fuzzing). */
+			throw new TorParsingException("Not an IPv4 address: " + ipString);
+		}
 		final int[] shifts = {24, 16, 8, 0};
 		int addressData = 0;
 		int i = 0;
