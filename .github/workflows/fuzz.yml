@@ -27,9 +27,11 @@ permissions:
   contents: read
 
 env:
-  # The last Jazzer release with a standalone binary.
-  JAZZER_VERSION: 0.24.0
-  JAZZER_SHA256: 48ad208580993ba3f1f4347e68c0f17db2db6adcc5553afbbbdfb3fbd4f44ae6
+  # The last Jazzer release with a standalone binary.  Not JAZZER_*: Jazzer
+  # reads every JAZZER_<OPTION> variable as an option, and JAZZER_VERSION
+  # stopped it as an invalid value for --version.
+  FUZZER_JAZZER_VERSION: 0.24.0
+  FUZZER_JAZZER_SHA256: 48ad208580993ba3f1f4347e68c0f17db2db6adcc5553afbbbdfb3fbd4f44ae6
 
 jobs:
   fuzz:
@@ -76,8 +78,8 @@ jobs:
       - name: Download Jazzer
         run: |
           curl -sSfL -o jazzer.tar.gz \
-            "https://github.com/CodeIntelligenceTesting/jazzer/releases/download/v${JAZZER_VERSION}/jazzer-linux.tar.gz"
-          echo "${JAZZER_SHA256}  jazzer.tar.gz" | sha256sum -c -
+            "https://github.com/CodeIntelligenceTesting/jazzer/releases/download/v${FUZZER_JAZZER_VERSION}/jazzer-linux.tar.gz"
+          echo "${FUZZER_JAZZER_SHA256}  jazzer.tar.gz" | sha256sum -c -
           mkdir jazzer && tar -xzf jazzer.tar.gz -C jazzer
 
       - name: Fuzz
