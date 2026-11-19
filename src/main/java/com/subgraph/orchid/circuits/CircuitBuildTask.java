@@ -100,7 +100,19 @@ public class CircuitBuildTask implements Runnable {
 
     private void buildCircuit(Router firstRouter) throws TorException {
         notifyInitialization();
-        final CircuitNode firstNode = extender.createFirstHop(firstRouter);
+        final CircuitNode firstNode;
+        try {
+            firstNode = extender.createFirstHop(firstRouter);
+        } catch (TorException e) {
+            /*
+             * The guard accepted the connection but did not create the
+             * hop: it is no more usable than one that cannot be reached
+             * (as in Tor, a circuit that fails at the first hop counts
+             * against the guard).
+             */
+            creationRequest.firstHopConnectionFailed(firstRouter);
+            throw e;
+        }
         creationRequest.firstHopCreated(firstRouter);
         creationRequest.nodeAdded(firstNode);
 
@@ -108,7 +120,11 @@ public class CircuitBuildTask implements Runnable {
             final CircuitNode extendedNode = extender.extendTo(creationRequest.getPathElement(i));
             creationRequest.nodeAdded(extendedNode);
         }
-        creationRequest.circuitBuiltForUse(firstRouter);
+        if(!creationRequest.circuitBuiltForUse(firstRouter)) {
+            circuit.markForClose();
+            throw new TorException("Not using circuit through guard "+ firstRouter.getNickname()
+                    +": a primary guard may be reachable again");
+        }
         creationRequest.circuitBuildCompleted(circuit);
         notifyDone();
     }

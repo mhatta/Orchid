@@ -112,7 +112,11 @@ public class CircuitPathChooser {
 
 	/* Feedback for guard selection (guard-spec 4.7, 4.8). */
 
-	/** A connection to the first hop of a circuit failed. */
+	/**
+	 * The first hop of a circuit failed: the connection could not be made,
+	 * or the router did not create the hop (no answer, DESTROY, a bad
+	 * reply).
+	 */
 	public void firstHopConnectionFailed(Router firstHop) {
 		if(useEntryGuards) {
 			entryGuards.guardConnectionFailed(firstHop);
@@ -126,11 +130,16 @@ public class CircuitPathChooser {
 		}
 	}
 
-	/** A circuit that will carry user traffic (not a directory request) was built. */
-	public void circuitBuiltForUse(Router firstHop) {
+	/**
+	 * A circuit that will carry user traffic (not a directory request) was
+	 * built.  Returns false if it should not be used, because a better
+	 * guard may be reachable (guard-spec 4.9).
+	 */
+	public boolean circuitBuiltForUse(Router firstHop) {
 		if(useEntryGuards) {
-			entryGuards.guardUsed(firstHop);
+			return entryGuards.circuitBuilt(firstHop);
 		}
+		return true;
 	}
 
 	public List<Router> choosePathWithExit(Router exitRouter) throws InterruptedException, PathSelectionFailedException {

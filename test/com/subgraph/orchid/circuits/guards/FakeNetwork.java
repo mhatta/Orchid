@@ -97,6 +97,8 @@ public class FakeNetwork {
 	public boolean haveConsensus = true;
 	public List<Map<String, String>> guardState = new ArrayList<Map<String, String>>();
 	public int stateWrites;
+	/* Identities passed to Directory.requestDescriptorsNow(). */
+	public final Set<HexDigest> descriptorsRequestedNow = new HashSet<HexDigest>();
 	public final Directory directory;
 
 	public FakeNetwork(int guards, int middles) {
@@ -142,6 +144,9 @@ public class FakeNetwork {
 						copy.add(new LinkedHashMap<String, String>(g));
 					}
 					return copy;
+				} else if(n.equals("requestDescriptorsNow")) {
+					descriptorsRequestedNow.addAll((java.util.Collection<HexDigest>) args[0]);
+					return null;
 				} else if(n.equals("setGuardState")) {
 					guardState = new ArrayList<Map<String, String>>((List<Map<String, String>>) args[0]);
 					stateWrites++;

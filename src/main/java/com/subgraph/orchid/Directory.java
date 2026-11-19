@@ -56,4 +56,24 @@ public interface Directory {
 
 	/** Replace the sampled entry guards in the state file and write it. */
 	void setGuardState(List<Map<String, String>> guards);
+
+	/**
+	 * Ask for the descriptors of these routers (by identity) to be
+	 * downloaded at once, without the delay that usually batches small
+	 * downloads.  Entry guard selection asks this for primary guards whose
+	 * descriptor is missing, since circuits wait for it.  A request lapses
+	 * when the descriptor arrives or after ten minutes.  The default
+	 * implementation does nothing.
+	 */
+	default void requestDescriptorsNow(Collection<HexDigest> identities) {
+	}
+
+	/**
+	 * The routers whose descriptors were asked for with
+	 * {@link #requestDescriptorsNow(Collection)} and are still missing.
+	 * The default implementation returns an empty set.
+	 */
+	default Set<HexDigest> getDescriptorsRequestedNow() {
+		return java.util.Collections.emptySet();
+	}
 }

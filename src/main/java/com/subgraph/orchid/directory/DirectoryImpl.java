@@ -610,6 +610,35 @@ public class DirectoryImpl implements Directory {
         stateFile.setGuards(guards);
     }
 
+    /* Identity of a router whose descriptor is wanted now -> when it was last asked for. */
+    private final Map<HexDigest, Long> descriptorsRequestedNow = new HashMap<HexDigest, Long>();
+    private static final long DESCRIPTOR_REQUEST_LIFETIME = 10 * 60 * 1000;
+
+    @Override
+    public synchronized void requestDescriptorsNow(Collection<HexDigest> identities) {
+        final long now = System.currentTimeMillis();
+        for(HexDigest id: identities) {
+            descriptorsRequestedNow.put(id, now);
+        }
+    }
+
+    @Override
+    public synchronized Set<HexDigest> getDescriptorsRequestedNow() {
+        final long now = System.currentTimeMillis();
+        final Set<HexDigest> wanted = new HashSet<HexDigest>();
+        final Iterator<Map.Entry<HexDigest, Long>> it = descriptorsRequestedNow.entrySet().iterator();
+        while(it.hasNext()) {
+            final Map.Entry<HexDigest, Long> e = it.next();
+            final RouterImpl router = routersByIdentity.get(e.getKey());
+            if(router == null || !router.isDescriptorDownloadable() || now - e.getValue() > DESCRIPTOR_REQUEST_LIFETIME) {
+                it.remove();
+            } else {
+                wanted.add(e.getKey());
+            }
+        }
+        return wanted;
+    }
+
     @Override
     public RouterMicrodescriptor getMicrodescriptorFromCache(HexDigest descriptorDigest) {
         return microdescriptorCache.getDescriptor(descriptorDigest);

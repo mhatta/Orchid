@@ -49,10 +49,12 @@ public class CircuitCreationRequest implements CircuitBuildHandler {
 		}
 	}
 
-	void circuitBuiltForUse(Router firstHop) {
+	/* False if the circuit should be closed instead of used (guard-spec 4.9). */
+	boolean circuitBuiltForUse(Router firstHop) {
 		if(pathChooser != null && firstHop != null && !isDirectoryCircuit) {
-			pathChooser.circuitBuiltForUse(firstHop);
+			return pathChooser.circuitBuiltForUse(firstHop);
 		}
+		return true;
 	}
 
 	CircuitImpl getCircuit() {

@@ -5,6 +5,8 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -44,16 +46,19 @@ import com.subgraph.orchid.logging.Logger;
  * <li>Guards are sampled whether or not their descriptor has arrived, and
  * a circuit waits for the descriptor of its primary guard (guard-spec
  * 4.12), so that the directory servers cannot choose a client's guards by
- * the descriptors they serve.</li>
- * <li>Reachability is learnt from circuits: a failed connection marks a
- * guard down, and it is tried again on the guard-spec retry schedules.
- * Guards are not probed.</li>
+ * the descriptors they serve.  A missing descriptor of a primary guard is
+ * downloaded at once ({@link Directory#requestDescriptorsNow}).</li>
+ * <li>Reachability is learnt from circuits: a failed connection, or a
+ * first hop the guard did not create, marks a guard down, and it is tried
+ * again on the guard-spec retry schedules.  Guards are not probed.</li>
+ * <li>A circuit through a non-primary guard is used only if the primary
+ * guards it was built instead of are still down when it is complete
+ * (guard-spec 4.9); otherwise it is closed and the next circuit tries the
+ * primary guards.  Unlike Tor, the circuit is not kept waiting.</li>
  * </ul>
  *
- * Not implemented: the "waiting for better guard" state of guard-spec 4.9
- * (a circuit through a non-primary guard is used at once instead of
- * waiting to see whether a primary guard comes back), path bias, and the
- * separate guard instances for bridges and restrictive configurations.
+ * Not implemented: path bias, and the separate guard instances for bridges
+ * and restrictive configurations.
  * With UseBridges the bridges are chosen by {@link Bridges} as before.
  *
  * The defaults are those of guard-spec; the consensus parameters of the
@@ -101,6 +106,11 @@ public class EntryGuards {
     private final List<SampledGuard> sampled = new ArrayList<SampledGuard>();
     private List<SampledGuard> primary = new ArrayList<SampledGuard>();
     private boolean loaded = false;
+    /*
+     * Non-primary guard chosen for a circuit -> the primary guards that
+     * were down then (guard-spec 4.9).  Guarded by lock.
+     */
+    private final Map<HexDigest, Set<HexDigest>> passedOverPrimaries = new HashMap<HexDigest, Set<HexDigest>>();
     private long lastTimeOnInternet = Long.MIN_VALUE;
 
     public EntryGuards(TorConfig config, DirectoryDownloader directoryDownloader, Directory directory) {
@@ -191,12 +201,39 @@ public class EntryGuards {
      * guard: it becomes a confirmed guard if it was not one.
      */
     public void guardUsed(Router router) {
+        circuitBuilt(router);
+    }
+
+    /**
+     * A circuit for user traffic was built through router, chosen as a
+     * guard.  Returns whether the circuit may be used.
+     *
+     * <p>guard-spec 4.9: a circuit through a non-primary guard was built
+     * because the primary guards seemed down.  If one of them may be
+     * reachable again by now (its retry time has come, the network
+     * changed, or the network seems to have been down), the circuit is
+     * not used, and false is returned: the caller closes it, and the next
+     * circuit tries the primary guard.  Otherwise, and for a circuit
+     * through a primary guard, the guard becomes a confirmed guard if it
+     * was not one, and true is returned.
+     */
+    public boolean circuitBuilt(Router router) {
         synchronized (lock) {
             final SampledGuard g = find(router);
             if(g == null) {
-                return;
+                return true;
             }
             markReachable(g);
+            final Set<HexDigest> passedOver = passedOverPrimaries.remove(g.getIdentity());
+            if(passedOver != null && !primary.contains(g)) {
+                retryUnreachable(clock.now());
+                for(SampledGuard p: primary) {
+                    if(passedOver.contains(p.getIdentity()) && p.getReachable() != SampledGuard.Reachable.NO) {
+                        logger.debug("Not using circuit through guard "+ g +": primary guard "+ p +" may be reachable");
+                        return false;
+                    }
+                }
+            }
             if(!g.isConfirmed()) {
                 final long now = clock.now();
                 g.confirm(new Date(randomPast(now, lifetime() / 10)), nextConfirmedIndex());
@@ -204,6 +241,7 @@ public class EntryGuards {
                 recomputePrimary();
                 save();
             }
+            return true;
         }
     }
 
@@ -229,12 +267,16 @@ public class EntryGuards {
                      */
                     if(!forDirectory && lacksDescriptor(primaries)) {
                         logger.debug("Waiting for the descriptors of the primary guards");
+                        directory.requestDescriptorsNow(missingDescriptors(primaries));
                         return null;
                     }
                     return chooseAmong(primaries);
                 }
                 final Router other = chooseNonPrimary(excluded, forDirectory);
                 if(other != null) {
+                    if(!forDirectory) {
+                        passedOverPrimaries.put(other.getIdentityHash(), downPrimaries(excluded));
+                    }
                     return other;
                 }
                 /*
@@ -288,6 +330,32 @@ public class EntryGuards {
             }
         }
         return false;
+    }
+
+    private static List<HexDigest> missingDescriptors(List<Router> routers) {
+        final List<HexDigest> ids = new ArrayList<HexDigest>();
+        for(Router r: routers) {
+            if(r.getCurrentDescriptor() == null) {
+                ids.add(r.getIdentityHash());
+            }
+        }
+        return ids;
+    }
+
+    /*
+     * The primary guards a circuit could have gone through but for being
+     * down: those not excluded by the circuit's other hops.  An excluded
+     * primary guard is no better choice for that circuit.
+     */
+    private Set<HexDigest> downPrimaries(Set<Router> excluded) {
+        final Set<HexDigest> ids = new HashSet<HexDigest>();
+        for(SampledGuard g: primary) {
+            final Router r = directory.getRouterByIdentity(g.getIdentity());
+            if(g.getReachable() == SampledGuard.Reachable.NO && (r == null || !excluded.contains(r))) {
+                ids.add(g.getIdentity());
+            }
+        }
+        return ids;
     }
 
     private Router chooseAmong(List<Router> routers) {

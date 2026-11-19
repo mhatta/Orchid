@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
+import java.util.Set;
 
 import com.subgraph.orchid.ConsensusDocument;
 import com.subgraph.orchid.Directory;
@@ -17,16 +18,35 @@ public class DescriptorProcessor {
 	private final static int MAX_DL_TO_DELAY = 16;
 	private final static int MIN_DL_REQUESTS = 3;
 	private final static int MAX_CLIENT_INTERVAL_WITHOUT_REQUEST = 10 * 60 * 1000;
+	/* How often a download asked for with Directory.requestDescriptorsNow() is tried again. */
+	private final static int URGENT_RETRY_INTERVAL = 15 * 1000;
 
 	private final TorConfig config;
 	private final Directory directory;
 	
 	private Date lastDescriptorDownload;
+	private long lastUrgentDownload = Long.MIN_VALUE;
 	
 	
+	/* Milliseconds since the epoch; replaced in tests. */
+	interface Clock {
+		long now();
+	}
+
+	private final Clock clock;
+
 	DescriptorProcessor(TorConfig config, Directory directory) {
+		this(config, directory, new Clock() {
+			public long now() {
+				return System.currentTimeMillis();
+			}
+		});
+	}
+
+	DescriptorProcessor(TorConfig config, Directory directory, Clock clock) {
 		this.config = config;
 		this.directory = directory;
+		this.clock = clock;
 	}
 
 	private boolean canDownloadDescriptors(int downloadableCount) {
@@ -36,9 +56,25 @@ public class DescriptorProcessor {
 			return false;
 		if(lastDescriptorDownload == null)
 			return true;
-		final Date now = new Date();
-		final long diff = now.getTime() - lastDescriptorDownload.getTime();
+		final long diff = clock.now() - lastDescriptorDownload.getTime();
 		return diff > MAX_CLIENT_INTERVAL_WITHOUT_REQUEST;
+	}
+
+	private boolean isUrgent(List<Router> downloadables) {
+		final Set<HexDigest> wanted = directory.getDescriptorsRequestedNow();
+		if(wanted == null || wanted.isEmpty()) {
+			return false;
+		}
+		final long now = clock.now();
+		if(lastUrgentDownload != Long.MIN_VALUE && now - lastUrgentDownload < URGENT_RETRY_INTERVAL) {
+			return false;
+		}
+		for(Router r: downloadables) {
+			if(wanted.contains(r.getIdentityHash())) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/*
@@ -102,11 +138,20 @@ public class DescriptorProcessor {
 			return Collections.emptyList();
 		}
 		final List<Router> downloadables = directory.getRoutersWithDownloadableDescriptors();
-		if(!canDownloadDescriptors(downloadables.size())) {
+		if(isUrgent(downloadables)) {
+			/*
+			 * A descriptor a circuit is waiting for (a primary guard's):
+			 * download now, not when 16 are missing or 10 minutes have
+			 * passed, and try again every 15 seconds while it is missing.
+			 * Each try goes through a directory guard chosen again, so a
+			 * guard that withholds the descriptor does not keep it away.
+			 */
+			lastUrgentDownload = clock.now();
+		} else if(!canDownloadDescriptors(downloadables.size())) {
 			return Collections.emptyList();
 		}
 		
-		lastDescriptorDownload = new Date();
+		lastDescriptorDownload = new Date(clock.now());
 		return partitionDescriptors(downloadables);
 	}
 }

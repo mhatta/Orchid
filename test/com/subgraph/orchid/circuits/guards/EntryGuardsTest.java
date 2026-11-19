@@ -10,6 +10,7 @@ import static org.junit.Assert.assertTrue;
 
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -127,7 +128,8 @@ public class EntryGuardsTest {
 	@Test
 	public void usedGuardIsConfirmedAndBecomesFirstPrimary() throws InterruptedException {
 		final EntryGuards guards = newGuards();
-		guards.chooseRandomGuard(FakeNetwork.none());
+		// Online a moment ago: the primary guards then went down for good.
+		guards.guardReachable(guards.chooseRandomGuard(FakeNetwork.none()));
 		for(SampledGuard g: guards.getPrimaryGuards()) {
 			guards.guardConnectionFailed(routerOf(g));
 		}
@@ -182,6 +184,9 @@ public class EntryGuardsTest {
 		for(int i = 0; i < 10; i++) {
 			assertNull(guards.chooseRandomGuard(FakeNetwork.none()));
 		}
+		// M7: the missing descriptor is asked for at once.
+		assertTrue(net.descriptorsRequestedNow.contains(first.getIdentityHash()));
+		assertEquals(1, net.descriptorsRequestedNow.size());
 		for(SampledGuard g: guards.getSampledGuards()) {
 			assertFalse(g.isConfirmed());
 		}
@@ -317,6 +322,87 @@ public class EntryGuardsTest {
 		assertEquals(9 * 60 * MINUTE, EntryGuards.primaryRetryInterval(8 * DAY));
 		assertEquals(60 * MINUTE, EntryGuards.retryInterval(0));
 		assertEquals(36 * 60 * MINUTE, EntryGuards.retryInterval(8 * DAY));
+	}
+
+	/* guard-spec 4.9 (L12): a circuit through a non-primary guard and its primaries. */
+
+	private Router failPrimariesAndChooseOther(EntryGuards guards) throws InterruptedException {
+		guards.guardReachable(guards.chooseRandomGuard(FakeNetwork.none()));
+		for(SampledGuard g: guards.getPrimaryGuards()) {
+			guards.guardConnectionFailed(routerOf(g));
+		}
+		final Router other = guards.chooseRandomGuard(FakeNetwork.none());
+		assertFalse(guards.getPrimaryGuards().contains(find(guards, other)));
+		guards.guardReachable(other);
+		return other;
+	}
+
+	@Test
+	public void nonPrimaryCircuitIsUsedWhilePrimariesAreDown() throws InterruptedException {
+		final EntryGuards guards = newGuards();
+		final Router other = failPrimariesAndChooseOther(guards);
+		net.time.addAndGet(MINUTE);
+		assertTrue(guards.circuitBuilt(other));
+		assertTrue(find(guards, other).isConfirmed());
+	}
+
+	@Test
+	public void nonPrimaryCircuitIsNotUsedAfterNetworkChange() throws InterruptedException {
+		final EntryGuards guards = newGuards();
+		final Router other = failPrimariesAndChooseOther(guards);
+		final Router primary = routerOf(guards.getPrimaryGuards().get(0));
+		guards.networkChanged();
+		assertFalse(guards.circuitBuilt(other));
+		assertFalse(find(guards, other).isConfirmed());
+		assertSame(primary, guards.chooseRandomGuard(FakeNetwork.none()));
+	}
+
+	@Test
+	public void nonPrimaryCircuitIsNotUsedOncePrimaryRetryIsDue() throws InterruptedException {
+		final EntryGuards guards = newGuards();
+		final Router other = failPrimariesAndChooseOther(guards);
+		net.time.addAndGet(11 * MINUTE);
+		assertFalse(guards.circuitBuilt(other));
+		assertFalse(find(guards, other).isConfirmed());
+	}
+
+	/* A non-primary guard that works after the network seemed down (4.8) brings the primaries back. */
+	@Test
+	public void nonPrimaryCircuitAfterOutageRetriesPrimaries() throws InterruptedException {
+		final EntryGuards guards = newGuards();
+		guards.chooseRandomGuard(FakeNetwork.none());
+		for(SampledGuard g: guards.getPrimaryGuards()) {
+			guards.guardConnectionFailed(routerOf(g));
+		}
+		final Router other = guards.chooseRandomGuard(FakeNetwork.none());
+		guards.guardReachable(other); // never online before: the primaries may work too
+		assertFalse(guards.circuitBuilt(other));
+	}
+
+	/* A primary guard that the circuit had to exclude is no reason to drop it. */
+	@Test
+	public void excludedPrimaryDoesNotBlockNonPrimaryCircuit() throws InterruptedException {
+		final EntryGuards guards = newGuards();
+		guards.guardReachable(guards.chooseRandomGuard(FakeNetwork.none()));
+		final List<SampledGuard> primaries = guards.getPrimaryGuards();
+		guards.guardConnectionFailed(routerOf(primaries.get(1)));
+		guards.guardConnectionFailed(routerOf(primaries.get(2)));
+		final Set<Router> excluded = new HashSet<Router>(Arrays.asList(routerOf(primaries.get(0))));
+		final Router other = guards.chooseRandomGuard(excluded);
+		assertFalse(primaries.contains(find(guards, other)));
+		guards.guardReachable(other);
+		guards.networkChanged();
+		// The two that were down may be back: not used.
+		assertFalse(guards.circuitBuilt(other));
+	}
+
+	/* A circuit through a primary guard is always used. */
+	@Test
+	public void primaryCircuitIsUsed() throws InterruptedException {
+		final EntryGuards guards = newGuards();
+		final Router first = guards.chooseRandomGuard(FakeNetwork.none());
+		guards.networkChanged();
+		assertTrue(guards.circuitBuilt(first));
 	}
 
 	private static SampledGuard find(EntryGuards guards, Router r) {
