@@ -69,8 +69,11 @@ jobs:
           arch: x86_64
           disable-animations: true
           working-directory: samples/android
+          # Clearing logcat only tidies the saved log, and right after boot
+          # it can fail on older images ("failed to clear the 'main' log",
+          # API 26); each line here must succeed, hence the "|| true".
           script: |
-            adb logcat -c
+            adb logcat -c || true
             ../../gradlew connectedDebugAndroidTest --no-daemon || (adb logcat -d -s Orchid OrchidSample TestRunner AndroidRuntime > logcat.txt; exit 1)
             adb logcat -d -s Orchid OrchidSample TestRunner > logcat.txt
 
