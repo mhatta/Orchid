@@ -132,6 +132,20 @@ public class TorClient {
         connectionCache.closeAllConnections();
     }
 
+    /**
+     * Use new circuits for all streams opened from now on, so that new
+     * activity cannot be linked through a shared exit relay with what was
+     * done before: the "New identity" of a proxy app, or Tor's NEWNYM
+     * signal.  Streams already open keep their circuits until they end.
+     * Entry guards are kept, as in Tor.
+     *
+     * @since 2.8.0
+     */
+    public void newIdentity() {
+        ensureStarted();
+        circuitManager.newIdentity();
+    }
+
     public Directory getDirectory() {
         return directory;
     }

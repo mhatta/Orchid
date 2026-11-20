@@ -106,11 +106,38 @@ public abstract class CircuitImpl implements Circuit, DashboardRenderable {
     }
 
     public boolean isMarkedForClose() {
+        if(retireWhenBuilt) {
+            return true;
+        }
         if(io == null) {
             return false;
         } else {
             return io.isMarkedForClose();
         }
+    }
+
+    /*
+     * Set by retire() on a circuit that is still being built: it is marked
+     * for close as soon as the build completes, so that it never carries a
+     * stream.  Closing it in the middle of the build would make the build
+     * fail and count, wrongly, against the entry guard.
+     */
+    private volatile boolean retireWhenBuilt;
+    private final Object retireLock = new Object();
+
+    /**
+     * Take no more streams on this circuit, and close it once the streams on
+     * it have ended (Tor's NEWNYM).  A circuit still being built is closed
+     * when the build completes.
+     */
+    void retire() {
+        synchronized(retireLock) {
+            if(!status.isConnected()) {
+                retireWhenBuilt = true;
+                return;
+            }
+        }
+        markForClose();
     }
 
     CircuitStatus getStatus() {
@@ -148,8 +175,13 @@ public abstract class CircuitImpl implements Circuit, DashboardRenderable {
     }
 
     void notifyCircuitBuildCompleted() {
-        status.setStateOpen();
-        status.updateCreatedTimestamp();
+        synchronized(retireLock) {
+            status.setStateOpen();
+            status.updateCreatedTimestamp();
+        }
+        if(retireWhenBuilt) {
+            markForClose();
+        }
     }
 
     public Connection getConnection() {

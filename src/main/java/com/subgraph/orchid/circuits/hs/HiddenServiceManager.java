@@ -1,5 +1,6 @@
 package com.subgraph.orchid.circuits.hs;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -164,6 +165,22 @@ public class HiddenServiceManager {
         }
         final HSV3DescriptorDownloader downloader = new HSV3DescriptorDownloader(hs, circuitManager, dirs);
         return downloader.downloadDescriptor();
+    }
+
+    /*
+     * CircuitManagerImpl#newIdentity(): the rendezvous circuits are retired
+     * there; here the descriptors are forgotten so that they are fetched
+     * again on new circuits.  The highest revision counters are kept: they
+     * protect against old descriptors (M3) and are never sent anywhere.
+     */
+    public void newIdentity() {
+        final List<HiddenService> services;
+        synchronized(hiddenServices) {
+            services = new ArrayList<HiddenService>(hiddenServices.values());
+        }
+        for(HiddenService hs: services) {
+            hs.forgetDescriptorAndCircuits();
+        }
     }
 
     HiddenService getHiddenServiceForOnion(String onion) throws OpenFailedException {

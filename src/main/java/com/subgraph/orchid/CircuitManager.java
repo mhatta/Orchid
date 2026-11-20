@@ -24,6 +24,17 @@ public interface CircuitManager {
 	 */
 	default void networkChanged() {
 	}
+
+	/**
+	 * Use new circuits for all streams opened from now on, as Tor's NEWNYM
+	 * signal does.  Streams already open are not interrupted: the circuits
+	 * they use take no new streams and are closed when the streams end.
+	 * The default implementation does nothing.
+	 *
+	 * @since 2.8.0
+	 */
+	default void newIdentity() {
+	}
 	/**
 	 * Attempt to open an exit stream to the specified destination <code>hostname</code> and
 	 * <code>port</code>.

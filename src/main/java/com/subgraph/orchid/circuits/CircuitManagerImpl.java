@@ -45,6 +45,7 @@ import com.subgraph.orchid.logging.Logger;
 import com.subgraph.orchid.directory.downloader.DirectoryDownloaderImpl;
 
 public class CircuitManagerImpl implements CircuitManager, DashboardRenderable {
+	private static final Logger logger = Logger.getInstance(CircuitManagerImpl.class);
 	private final static int OPEN_DIRECTORY_STREAM_RETRY_COUNT = 5;
 	private final static int OPEN_DIRECTORY_STREAM_TIMEOUT = 10 * 1000;
 	
@@ -223,6 +224,28 @@ public class CircuitManagerImpl implements CircuitManager, DashboardRenderable {
 	@Override
 	public void networkChanged() {
 		pathChooser.networkChanged();
+	}
+
+	/**
+	 * Use new circuits for every stream from now on (Tor's NEWNYM).  Every
+	 * circuit but the directory circuits takes no more streams and is
+	 * closed once the streams on it have ended; circuits still being built
+	 * are closed when they are done.  Onion service descriptors are
+	 * fetched again, since the HSDirs that served them could otherwise tie
+	 * the old and the new activity together.
+	 */
+	@Override
+	public void newIdentity() {
+		int retired = 0;
+		for(Circuit c: getCircuitsByFilter(null)) {
+			if(c instanceof DirectoryCircuit || !(c instanceof CircuitImpl)) {
+				continue;
+			}
+			((CircuitImpl) c).retire();
+			retired++;
+		}
+		hiddenServiceManager.newIdentity();
+		logger.info("New identity: "+ retired +" circuits will take no new streams");
 	}
 
 	public Stream openExitStreamTo(String hostname, int port)

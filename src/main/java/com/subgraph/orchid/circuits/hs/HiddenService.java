@@ -163,6 +163,12 @@ public class HiddenService {
 		circuits.values().remove(dead);
 	}
 
+	/* For a new identity: the next stream fetches the descriptor again on a new circuit. */
+	synchronized void forgetDescriptorAndCircuits() {
+		descriptor = null;
+		circuits.clear();
+	}
+
 	/**
 	 * Held while a rendezvous circuit to this service is being opened, so that
 	 * concurrent streams to the same service share one attempt.  Streams to
