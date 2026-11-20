@@ -206,6 +206,24 @@ public class HttpTunnelTest {
 		assertEquals("example.com:443|"+ SocksRequest.makeIsolationKey("socks5", "alice".getBytes("UTF-8"), "pw".getBytes("UTF-8")), requests.get(0));
 	}
 
+	/* Clients that cannot send credentials (the Wi-Fi proxy setting) get one key per host. */
+	@Test(timeout = 20000)
+	public void testIsolateDestAddr() throws Exception {
+		config.setIsolateDestAddr(true);
+		listener.addHttpTunnelPort(port);
+		for(String host: new String[] { "a.example.com", "b.example.com" }) {
+			final Socket s = connect();
+			try {
+				s.getOutputStream().write(("CONNECT "+ host +":443 HTTP/1.1\r\n\r\n").getBytes("US-ASCII"));
+				readLine(s.getInputStream());
+			} finally {
+				s.close();
+			}
+		}
+		assertEquals("a.example.com:443|dest=a.example.com", requests.get(0));
+		assertEquals("b.example.com:443|dest=b.example.com", requests.get(1));
+	}
+
 	@Test(timeout = 20000)
 	public void testFailedStreamGetsBadGateway() throws Exception {
 		listener.addHttpTunnelPort(port);

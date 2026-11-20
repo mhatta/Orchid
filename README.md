@@ -87,6 +87,14 @@ are refused.  Applications that use Orchid as a library can isolate streams
 too, with `TorClient#openExitStreamTo(host, port, isolationKey)` or
 `TorClient#getSocketFactory(isolationKey)`.
 
+Clients that cannot send credentials, such as apps that follow the Wi-Fi
+proxy setting of Android, would all share the same circuits.
+`TorConfig#setIsolateDestAddr(true)` (Tor's IsolateDestAddr) gives every
+destination host circuits of its own, on the SOCKS and HTTP tunnel ports, in
+addition to any isolation by credentials.  It costs a circuit per host: the
+first connection to a host waits for one, and when the limit of isolation
+groups is reached, the idle group used longest ago is closed.
+
 ### HTTP CONNECT
 
 For applications and settings that can use only an HTTP proxy, such as the

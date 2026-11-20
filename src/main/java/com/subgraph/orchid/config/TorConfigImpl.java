@@ -71,6 +71,7 @@ public class TorConfigImpl implements TorConfig {
     private boolean safeSocks;
     private String socksListenAddress;
     private volatile String socksPassword;
+    private volatile boolean isolateDestAddr;
     private boolean safeLogging;
     private boolean warnUnsafeSocks;
     private boolean clientRejectInternalAddress;
@@ -336,6 +337,16 @@ public class TorConfigImpl implements TorConfig {
     @Override
     public void setSocksPassword(String password) {
         socksPassword = password;
+    }
+
+    @Override
+    public boolean getIsolateDestAddr() {
+        return isolateDestAddr;
+    }
+
+    @Override
+    public void setIsolateDestAddr(boolean value) {
+        isolateDestAddr = value;
     }
 
     @Override

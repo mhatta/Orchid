@@ -186,6 +186,40 @@ public class SocksAuthenticationTest {
 		assertFalse("other password, other key", alice.equals(lastKey()));
 	}
 
+	/* IsolateDestAddr: the destination host joins the key, with or without credentials. */
+	@Test(timeout = 20000)
+	public void testIsolateDestAddr() throws Exception {
+		config.setIsolateDestAddr(true);
+		connectWithoutAuth();
+		assertEquals("dest=example.com", lastKey());
+		connectWithUserPass("alice", "x");
+		final String alice = lastKey();
+		assertTrue(alice, alice.startsWith("socks5:") && alice.endsWith("|dest=example.com"));
+		// An address, not a name.
+		final Socket s = connect();
+		try {
+			final OutputStream out = s.getOutputStream();
+			out.write(new byte[] { 5, 1, 0 });
+			read(s.getInputStream(), 2);
+			out.write(new byte[] { 5, 1, 0, 1, 93, (byte) 184, (byte) 215, 14, 0, 80 });
+			read(s.getInputStream(), 2);
+		} finally {
+			s.close();
+		}
+		assertEquals("dest=93.184.215.14", lastKey());
+	}
+
+	@Test
+	public void testIsolationKeyForDestination() {
+		assertNull(SocksRequest.isolationKeyFor(config, null, "example.com"));
+		assertEquals("k", SocksRequest.isolationKeyFor(config, "k", "example.com"));
+		config.setIsolateDestAddr(true);
+		assertEquals("dest=example.com", SocksRequest.isolationKeyFor(config, null, "Example.COM."));
+		assertEquals("socks5:61:62|dest=example.com", SocksRequest.isolationKeyFor(config, "socks5:61:62", "example.com"));
+		assertFalse(SocksRequest.isolationKeyFor(config, null, "a.example.com").equals(SocksRequest.isolationKeyFor(config, null, "b.example.com")));
+		assertFalse("off by default", new TorConfigImpl().getIsolateDestAddr());
+	}
+
 	@Test(timeout = 20000)
 	public void testKeysAreUnambiguous() throws Exception {
 		connectWithUserPass("a:b", "c");

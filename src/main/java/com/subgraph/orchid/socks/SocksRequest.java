@@ -3,6 +3,7 @@ package com.subgraph.orchid.socks;
 import java.io.IOException;
 import java.net.Socket;
 import java.security.MessageDigest;
+import java.util.Locale;
 
 import com.subgraph.orchid.TorConfig;
 import com.subgraph.orchid.data.IPv4Address;
@@ -60,6 +61,29 @@ public abstract class SocksRequest {
      */
     protected void setIsolationKey(String kind, byte[]... parts) {
         isolationKey = makeIsolationKey(kind, parts);
+    }
+
+    /**
+     * The isolation key for a stream to <code>destination</code>: with
+     * IsolateDestAddr ({@link TorConfig#getIsolateDestAddr()}) the
+     * destination host is added to <code>key</code> (the key of the
+     * credentials, or null), otherwise <code>key</code> itself.
+     */
+    static String isolationKeyFor(TorConfig config, String key, String destination) {
+        if(!config.getIsolateDestAddr() || destination == null) {
+            return key;
+        }
+        String host = destination.toLowerCase(Locale.ROOT);
+        if(host.endsWith(".")) {
+            host = host.substring(0, host.length() - 1);
+        }
+        /* Credential keys are "socksN" and hex parts joined by ':'; they contain no '|'. */
+        return (key == null ? "" : key + "|") + "dest=" + host;
+    }
+
+    /** The key for this request's destination: see {@link #isolationKeyFor}. */
+    String getStreamIsolationKey() {
+        return isolationKeyFor(config, isolationKey, hostname != null ? hostname : (address == null ? null : address.toString()));
     }
 
     /* Also used by HttpTunnelClientTask, so that both ports make the same key from the same credentials. */

@@ -121,6 +121,41 @@ public interface TorConfig {
 	default void setSocksPassword(String password) {
 		throw new UnsupportedOperationException("setSocksPassword");
 	}
+
+	/**
+	 * Whether streams from the SOCKS and HTTP tunnel ports to different
+	 * destination hosts never share a circuit (Tor's IsolateDestAddr).  Off
+	 * by default.
+	 *
+	 * Turn it on when the clients cannot send credentials to isolate their
+	 * streams themselves: the Wi-Fi proxy setting of Android, and many apps,
+	 * send none, so that without it all their streams share the same exit
+	 * circuits, for up to MaxCircuitDirtiness (ten minutes).  The host is
+	 * added to whatever isolation the credentials give.  Each host then
+	 * needs a circuit of its own: more circuits are built, and the first
+	 * connection to a host waits for one.  Up to
+	 * {@code CircuitManagerImpl.MAX_ISOLATION_GROUPS} groups are open at
+	 * once; when they are all in use, the idle circuit of the group used
+	 * longest ago is closed to make room.
+	 *
+	 * It isolates by host name (or address) as the client sends it, not by
+	 * site: www.example.com and static.example.com get different circuits,
+	 * and a third party embedded in two sites shares a circuit between
+	 * them.  It does not apply to {@code TorClient#getSocketFactory} or
+	 * {@code TorClient#openExitStreamTo}, which take an isolation key.
+	 *
+	 * The default implementation returns false.
+	 *
+	 * @since 2.8.0
+	 */
+	default boolean getIsolateDestAddr() {
+		return false;
+	}
+
+	/** See {@link #getIsolateDestAddr()}.  The default implementation throws UnsupportedOperationException. */
+	default void setIsolateDestAddr(boolean value) {
+		throw new UnsupportedOperationException("setIsolateDestAddr");
+	}
 	
 	/**
 	 * Whether log messages leave out the destinations of streams (the host

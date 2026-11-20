@@ -108,7 +108,8 @@ public class HttpTunnelClientTask implements Runnable {
         final String target = config.getSafeLogging() ? "[scrubbed]:"+ request.port : request.host +":"+ request.port;
         final Stream stream;
         try {
-            stream = circuitManager.openExitStreamTo(request.host, request.port, request.isolationKey);
+            stream = circuitManager.openExitStreamTo(request.host, request.port,
+                    SocksRequest.isolationKeyFor(config, request.isolationKey, request.host));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new HttpError(503, "Service Unavailable", "interrupted");

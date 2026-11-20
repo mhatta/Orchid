@@ -4,9 +4,12 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.net.InetAddress;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.Executors;
@@ -307,10 +310,84 @@ public class CircuitManagerImpl implements CircuitManager, DashboardRenderable {
 		if(isolationKey == null) {
 			return;
 		}
-		final Set<String> keys = isolationKeysInUse(getCircuitsByFilter(null), getPendingExitStreams());
-		if(!keys.contains(isolationKey) && keys.size() >= MAX_ISOLATION_GROUPS) {
-			throw new OpenFailedException("Too many isolated streams open at once ("+ keys.size() +" isolation keys)");
+		Set<String> keys = isolationKeysInUse(getCircuitsByFilter(null), getPendingExitStreams());
+		if(keys.contains(isolationKey) || keys.size() < MAX_ISOLATION_GROUPS) {
+			return;
 		}
+		if(reclaimIdleIsolationGroup(isolationKey)) {
+			keys = isolationKeysInUse(getCircuitsByFilter(null), getPendingExitStreams());
+			if(keys.size() < MAX_ISOLATION_GROUPS) {
+				return;
+			}
+		}
+		throw new OpenFailedException("Too many isolated streams open at once ("+ keys.size() +" isolation keys)");
+	}
+
+	/*
+	 * Make room for a new isolation group by closing the circuits of an idle
+	 * one: a group none of whose circuits carries a stream and for which no
+	 * stream is waiting, the one whose circuits were first used longest ago.
+	 * With IsolateDestAddr every host is a group, and a browser reaches the
+	 * limit in a few pages; without this, every new host failed until a
+	 * group's circuits reached MaxCircuitDirtiness.  Returns false if no
+	 * group is idle.
+	 */
+	private boolean reclaimIdleIsolationGroup(String wanted) {
+		final List<ExitCircuitImpl> victims = chooseIdleIsolationGroup(getCircuitsByFilter(null), getPendingExitStreams(), wanted);
+		if(victims.isEmpty()) {
+			return false;
+		}
+		for(ExitCircuitImpl e: victims) {
+			e.markForClose();
+		}
+		logger.debug("Closed the idle circuits of an isolation group to make room for a new one");
+		return true;
+	}
+
+	/* The circuits of the group reclaimIdleIsolationGroup() closes, or an empty list. */
+	static List<ExitCircuitImpl> chooseIdleIsolationGroup(Iterable<? extends Circuit> circuits, Iterable<StreamExitRequest> pending, String wanted) {
+		final Set<String> busy = new HashSet<String>();
+		for(StreamExitRequest r: pending) {
+			if(r.getIsolationKey() != null) {
+				busy.add(r.getIsolationKey());
+			}
+		}
+		final Map<String, List<ExitCircuitImpl>> groups = new HashMap<String, List<ExitCircuitImpl>>();
+		for(Circuit c: circuits) {
+			if(!(c instanceof ExitCircuitImpl) || c.isMarkedForClose()) {
+				continue;
+			}
+			final ExitCircuitImpl e = (ExitCircuitImpl) c;
+			final String k = e.getClaimedIsolationKey();
+			if(k == null || k.equals(wanted)) {
+				continue;
+			}
+			if(!e.getActiveStreams().isEmpty()) {
+				busy.add(k);
+			}
+			List<ExitCircuitImpl> list = groups.get(k);
+			if(list == null) {
+				list = new ArrayList<ExitCircuitImpl>();
+				groups.put(k, list);
+			}
+			list.add(e);
+		}
+		List<ExitCircuitImpl> oldest = Collections.emptyList();
+		int oldestAge = -1;
+		for(Map.Entry<String, List<ExitCircuitImpl>> g: groups.entrySet()) {
+			if(busy.contains(g.getKey())) {
+				continue;
+			}
+			int age = 0;
+			for(ExitCircuitImpl e: g.getValue()) {
+				age = Math.max(age, e.getSecondsDirty());
+			}
+			if(age > oldestAge) {
+				oldest = g.getValue();
+				oldestAge = age;
+			}
+		}
+		return oldest;
 	}
 
 	/* The isolation keys (other than null) of open exit circuits and waiting streams. */
