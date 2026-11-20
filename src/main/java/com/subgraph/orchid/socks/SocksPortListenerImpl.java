@@ -51,6 +51,8 @@ public class SocksPortListenerImpl implements SocksPortListener {
     private final Semaphore handshakeSlots = new Semaphore(MAX_HANDSHAKING_CLIENTS);
     private final ScheduledExecutorService handshakeWatchdog = Threading.newScheduledPool("SOCKS handshake watchdog");
     private final Set<Integer> listeningPorts = new HashSet<Integer>();
+    /* The ports of listeningPorts that are HTTP tunnel ports, not SOCKS ports. */
+    private final Set<Integer> httpTunnelPorts = new HashSet<Integer>();
     private final Map<Integer, AcceptTask> acceptThreads = new HashMap<Integer, AcceptTask>();
     private final TorConfig config;
     private final CircuitManager circuitManager;
@@ -65,6 +67,20 @@ public class SocksPortListenerImpl implements SocksPortListener {
 
     @Override
     public void addListeningPort(int port) {
+        addPort(port, false);
+    }
+
+    /**
+     * Listen on <code>port</code> for HTTP CONNECT requests (Tor's
+     * HTTPTunnelPort), on the same address as the SOCKS ports and with the
+     * same limits on clients: see {@link HttpTunnelClientTask}.
+     */
+    @Override
+    public void addHttpTunnelPort(int port) {
+        addPort(port, true);
+    }
+
+    private void addPort(int port, boolean httpTunnel) {
         if(port <= 0 || port > 65535) {
             throw new TorException("Illegal listening port: "+ port);
         }
@@ -73,14 +89,22 @@ public class SocksPortListenerImpl implements SocksPortListener {
             if(isStopped) {
                 throw new IllegalStateException("Cannot add listening port because Socks proxy has been stopped");
             }
-            if(listeningPorts.contains(port))
+            if(listeningPorts.contains(port)) {
+                if(httpTunnelPorts.contains(port) != httpTunnel) {
+                    throw new TorException("Port "+ port +" is already used for "+ (httpTunnel ? "SOCKS" : "HTTP CONNECT"));
+                }
                 return;
+            }
             listeningPorts.add(port);
+            if(httpTunnel) {
+                httpTunnelPorts.add(port);
+            }
             try {
-                startListening(port);
+                startListening(port, httpTunnel);
                 logger.debug("Listening for SOCKS connections on port "+ port);
             } catch (IOException e) {
                 listeningPorts.remove(port);
+                httpTunnelPorts.remove(port);
                 throw new TorException("Failed to listen on port "+ port +" : "+ e.getMessage());
             }
         }
@@ -99,8 +123,8 @@ public class SocksPortListenerImpl implements SocksPortListener {
         }
     }
 
-    private void startListening(int port) throws IOException {
-        final AcceptTask task = new AcceptTask(port);
+    private void startListening(int port, boolean httpTunnel) throws IOException {
+        final AcceptTask task = new AcceptTask(port, httpTunnel);
         acceptThreads.put(port, task);
         executor.execute(task);
     }
@@ -142,8 +166,10 @@ public class SocksPortListenerImpl implements SocksPortListener {
         }
     }
 
-    private Runnable newClientSocket(final Socket s, final Handshake handshake) {
-        final Runnable task = new SocksClientTask(config, s, circuitManager, handshake);
+    private Runnable newClientSocket(final Socket s, final Handshake handshake, boolean httpTunnel) {
+        final Runnable task = httpTunnel
+                ? new HttpTunnelClientTask(config, s, circuitManager, handshake)
+                : new SocksClientTask(config, s, circuitManager, handshake);
         return new Runnable() {
             public void run() {
                 try {
@@ -156,7 +182,7 @@ public class SocksPortListenerImpl implements SocksPortListener {
         };
     }
 
-    private void acceptClient(Socket s) {
+    private void acceptClient(Socket s, boolean httpTunnel) {
         if(!clientSlots.tryAcquire()) {
             logger.warn("Too many SOCKS clients (limit "+ MAX_CONCURRENT_CLIENTS +"), refusing a connection");
             closeQuietly(s);
@@ -171,7 +197,7 @@ public class SocksPortListenerImpl implements SocksPortListener {
         final Handshake handshake = new Handshake();
         try {
             handshake.start(s);
-            executor.execute(newClientSocket(s, handshake));
+            executor.execute(newClientSocket(s, handshake, httpTunnel));
         } catch(RuntimeException e) {
             handshake.run();
             clientSlots.release();
@@ -205,13 +231,15 @@ public class SocksPortListenerImpl implements SocksPortListener {
     private class AcceptTask implements Runnable {
         private final ServerSocket socket;
         private final int port;
+        private final boolean httpTunnel;
         private volatile boolean stopped;
 
-        AcceptTask(int port) throws IOException {
+        AcceptTask(int port, boolean httpTunnel) throws IOException {
             final InetAddress address = getListenAddress();
             this.socket = new ServerSocket(port, 50, address);
+            this.httpTunnel = httpTunnel;
             if(!address.isLoopbackAddress()) {
-                logger.warn("SOCKS listener on port "+ port +" is bound to "+ address.getHostAddress() +
+                logger.warn((httpTunnel ? "HTTP tunnel" : "SOCKS") +" listener on port "+ port +" is bound to "+ address.getHostAddress() +
                         ", not to the loopback address: other hosts that can reach it can use it as a Tor proxy");
             }
             this.port = port;
@@ -237,6 +265,7 @@ public class SocksPortListenerImpl implements SocksPortListener {
             } finally {
                 synchronized (listeningPorts) {
                     listeningPorts.remove(port);
+                    httpTunnelPorts.remove(port);
                     acceptThreads.remove(port);
                 }
             }
@@ -244,7 +273,7 @@ public class SocksPortListenerImpl implements SocksPortListener {
 
         private void runAcceptLoop() throws IOException {
             while(!Thread.interrupted() && !stopped) {
-                acceptClient(socket.accept());
+                acceptClient(socket.accept(), httpTunnel);
             }
         }
     }

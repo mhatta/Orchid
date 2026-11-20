@@ -59,6 +59,11 @@ public abstract class SocksRequest {
      * give different keys.  (java.util.Base64 needs Android API level 26.)
      */
     protected void setIsolationKey(String kind, byte[]... parts) {
+        isolationKey = makeIsolationKey(kind, parts);
+    }
+
+    /* Also used by HttpTunnelClientTask, so that both ports make the same key from the same credentials. */
+    static String makeIsolationKey(String kind, byte[]... parts) {
         final StringBuilder sb = new StringBuilder(kind);
         for(byte[] part: parts) {
             sb.append(':');
@@ -66,7 +71,7 @@ public abstract class SocksRequest {
                 sb.append(Character.forDigit((b >> 4) & 0xF, 16)).append(Character.forDigit(b & 0xF, 16));
             }
         }
-        isolationKey = sb.toString();
+        return sb.toString();
     }
 
     protected TorConfig getConfig() {

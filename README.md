@@ -87,6 +87,18 @@ are refused.  Applications that use Orchid as a library can isolate streams
 too, with `TorClient#openExitStreamTo(host, port, isolationKey)` or
 `TorClient#getSocketFactory(isolationKey)`.
 
+### HTTP CONNECT
+
+For applications and settings that can use only an HTTP proxy, such as the
+Wi-Fi proxy setting of Android, `TorClient#enableHttpTunnelListener(port)`
+opens an HTTP tunnel port (Tor's HTTPTunnelPort).  It serves only
+`CONNECT`, which clients use for `https://` URLs; plain HTTP requests are
+refused with "405 Method Not Allowed".  The port listens on the same address
+as the SOCKS port and requires the same password, if one is set.  The user
+name and password of a `Proxy-Authorization: Basic` header isolate streams as
+SOCKS 5 credentials do, and the same credentials select the same circuits on
+both ports.
+
 ## Using the dashboard
 
 Orchid also includes a "dashboard" feature to observe information about the internal state of Tor. To start the dashboard, set the following property when the JAR is run like:

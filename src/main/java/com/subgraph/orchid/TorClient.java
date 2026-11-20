@@ -246,6 +246,24 @@ public class TorClient {
         socksListener.addListeningPort(port);
     }
 
+    /**
+     * Accept HTTP CONNECT requests on <code>port</code> (Tor's
+     * HTTPTunnelPort), for applications and settings that can use only an
+     * HTTP proxy, such as the Wi-Fi proxy setting of Android.  Only CONNECT
+     * is served, which is what clients use for https:// URLs; plain HTTP
+     * requests are refused.  The port is bound like the SOCKS port (see
+     * {@link TorConfig#getSocksListenAddress()}), is protected by the same
+     * password if one is set ({@link TorConfig#setSocksPassword(String)}),
+     * and isolates streams by the user name and password of the
+     * <code>Proxy-Authorization</code> header as the SOCKS port does by the
+     * SOCKS credentials.
+     *
+     * @since 2.8.0
+     */
+    public void enableHttpTunnelListener(int port) {
+        socksListener.addHttpTunnelPort(port);
+    }
+
     public void enableSocksListener() {
         enableSocksListener(9150);
     }
