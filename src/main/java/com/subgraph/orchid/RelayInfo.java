@@ -5,6 +5,13 @@ package com.subgraph.orchid;
  * ({@link CircuitInfo#getPath()}) or as an entry guard ({@link GuardInfo}).
  * A snapshot: it does not change when the relay does.
  *
+ * <p>The relays a client uses, and above all its entry guards, which it
+ * keeps for months, are close to an identifier of the client: whoever
+ * learns them can recognize it on another network.  Show them to the user,
+ * but do not log them, send them anywhere (crash reports, analytics), put
+ * them on the lock screen, or make them available to other apps through
+ * an exported component.  {@link #toString()} leaves them out.
+ *
  * @since 2.8.0
  */
 public final class RelayInfo {
@@ -39,8 +46,12 @@ public final class RelayInfo {
 		return countryCode;
 	}
 
+	/**
+	 * Only the country code: neither the fingerprint nor the nickname, so
+	 * that logging the object does not record which relays were used.
+	 */
 	@Override
 	public String toString() {
-		return (nickname == null ? "" : nickname) + "$" + fingerprint + (countryCode == null ? "" : " {"+ countryCode +"}");
+		return "relay {"+ (countryCode == null ? "??" : countryCode) +"}";
 	}
 }

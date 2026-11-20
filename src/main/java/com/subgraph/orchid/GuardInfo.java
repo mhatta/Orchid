@@ -6,6 +6,10 @@ import java.util.Date;
  * A snapshot of one entry guard of the sample that Orchid keeps (guard-spec,
  * proposal 271), for showing to users.  See {@link TorClient#getEntryGuards()}.
  *
+ * <p>The entry guards identify the client for months: see {@link RelayInfo}
+ * for what not to do with them.  {@link #getSampledOn()} also tells
+ * roughly when Orchid was first used on the device.
+ *
  * @since 2.8.0
  */
 public final class GuardInfo {
@@ -74,8 +78,9 @@ public final class GuardInfo {
 		return copy(confirmedOn);
 	}
 
+	/** Without the guard's identity: see {@link RelayInfo}. */
 	@Override
 	public String toString() {
-		return relay + (primary ? " primary" : "") + (confirmed ? " confirmed" : "") + " " + reachability;
+		return "guard" + (primary ? " primary" : "") + (confirmed ? " confirmed" : "") + " " + reachability;
 	}
 }

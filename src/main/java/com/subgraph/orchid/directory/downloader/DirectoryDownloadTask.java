@@ -31,6 +31,11 @@ public class DirectoryDownloadTask implements Runnable {
     private final TorRandom random;
     private final DescriptorProcessor descriptorProcessor;
 
+    /* See DescriptorProcessor#networkChanged(). */
+    void networkChanged() {
+        descriptorProcessor.networkChanged();
+    }
+
     private final ExecutorService executor = Threading.newPool("DirectoryDownloadTask worker");
 
     private volatile boolean isDownloadingCertificates;

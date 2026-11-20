@@ -188,7 +188,17 @@ public class DescriptorProcessor {
 		return config.getUseMicrodescriptors() != AutoBoolValue.FALSE;
 	}
 
-	List< List<HexDigest> > getDescriptorDigestsToDownload() {
+	/*
+	 * After a network change the failures say nothing about the new
+	 * network: without this, a phone that was offline for a while waited
+	 * up to ten more minutes, once back online, for the descriptor of its
+	 * primary guard.
+	 */
+	synchronized void networkChanged() {
+		attempts.clear();
+	}
+
+	synchronized List< List<HexDigest> > getDescriptorDigestsToDownload() {
 		final ConsensusDocument consensus = directory.getCurrentConsensusDocument();
 		if(consensus == null || !consensus.isLive()) {
 			return Collections.emptyList();

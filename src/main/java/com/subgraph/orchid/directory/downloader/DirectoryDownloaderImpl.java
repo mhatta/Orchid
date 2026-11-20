@@ -59,6 +59,16 @@ public class DirectoryDownloaderImpl implements DirectoryDownloader {
         isStarted = true;
     }
 
+    /**
+     * The network changed: descriptors that could not be fetched are asked
+     * for again at once, not after the wait that their failures earned.
+     */
+    public synchronized void networkChanged() {
+        if(downloadTask != null) {
+            downloadTask.networkChanged();
+        }
+    }
+
     @Override
     public synchronized void stop() {
         if(!isStarted || isStopped) {

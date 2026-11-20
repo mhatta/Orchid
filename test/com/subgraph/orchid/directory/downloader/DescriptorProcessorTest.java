@@ -187,6 +187,19 @@ public class DescriptorProcessorTest {
 		assertEquals(1, requested());
 	}
 
+	@Test
+	public void networkChangeEndsTheWait() {
+		assertEquals(3, requested());
+		requestedNow.add(digest(1, 0));
+		time.addAndGet(15 * SECOND);
+		assertEquals(1, requested());
+		// Waiting 30 seconds for router 1 now; the network changes.
+		time.addAndGet(SECOND);
+		assertEquals(0, requested());
+		processor.networkChanged();
+		assertEquals(1, requested());
+	}
+
 	/* With 16 or more missing, every download used to ask for all of them again, every five seconds. */
 	@Test
 	public void manyMissingDescriptorsBackOff() {

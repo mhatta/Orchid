@@ -11,7 +11,9 @@ import java.util.List;
  *
  * <p>It never carries a stream isolation key, which can contain a SOCKS
  * user name and password; {@link #isIsolated()} says only whether there is
- * one.
+ * one.  Nor does it name the destination of the streams, not even the
+ * onion address of an onion service circuit.  The relays in the path are
+ * sensitive all the same: see {@link RelayInfo}.
  *
  * @since 2.8.0
  */
@@ -94,8 +96,9 @@ public final class CircuitInfo {
 		return secondsDirty;
 	}
 
+	/** Without the relays: see {@link RelayInfo}. */
 	@Override
 	public String toString() {
-		return purpose + " " + state + " " + path;
+		return purpose + " " + state + " " + path.size() + " hops, " + streamCount + " streams";
 	}
 }

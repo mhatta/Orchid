@@ -92,4 +92,20 @@ public class CircuitInfoTest {
 		assertEquals("JP", r.getCountryCode());
 		assertNull("unknown country", CircuitImpl.relayInfo(router("relay2", "??")).getCountryCode());
 	}
+
+	/* Logging the snapshots must not record which relays were used. */
+	@Test
+	public void testToStringLeavesOutTheRelays() {
+		final RelayInfo r = CircuitImpl.relayInfo(router("relay1", "JP"));
+		assertFalse(r.toString().contains("relay1"));
+		assertFalse(r.toString().toUpperCase().contains("AB000000"));
+		final CircuitInfo c = new CircuitInfo(CircuitInfo.Purpose.EXIT, CircuitInfo.State.OPEN,
+				java.util.Arrays.asList(r, r, r), 2, true, 5);
+		assertFalse(c.toString().contains("relay1"));
+		assertFalse(c.toString().toUpperCase().contains("AB000000"));
+		final com.subgraph.orchid.GuardInfo g = new com.subgraph.orchid.GuardInfo(r, true, true, true,
+				com.subgraph.orchid.GuardInfo.Reachability.REACHABLE, new java.util.Date(), null);
+		assertFalse(g.toString().contains("relay1"));
+		assertFalse(g.toString().toUpperCase().contains("AB000000"));
+	}
 }

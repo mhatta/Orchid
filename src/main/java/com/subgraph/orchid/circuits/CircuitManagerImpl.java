@@ -236,6 +236,17 @@ public class CircuitManagerImpl implements CircuitManager, DashboardRenderable {
 	 * fetched again, since the HSDirs that served them could otherwise tie
 	 * the old and the new activity together.
 	 */
+	/*
+	 * Every circuit but the directory circuits.  Not "instanceof
+	 * DirectoryCircuit": InternalCircuitImpl implements that interface too
+	 * (an internal circuit can fetch an onion service descriptor), so the
+	 * test left the onion service circuits, rendezvous circuits included,
+	 * out of a new identity.
+	 */
+	static boolean isRetiredByNewIdentity(Circuit c) {
+		return (c instanceof CircuitImpl) && !(c instanceof DirectoryCircuitImpl);
+	}
+
 	@Override
 	public List<CircuitInfo> getCircuitInfo() {
 		final List<CircuitInfo> result = new ArrayList<CircuitInfo>();
@@ -256,11 +267,10 @@ public class CircuitManagerImpl implements CircuitManager, DashboardRenderable {
 	public void newIdentity() {
 		int retired = 0;
 		for(Circuit c: getCircuitsByFilter(null)) {
-			if(c instanceof DirectoryCircuit || !(c instanceof CircuitImpl)) {
-				continue;
+			if(isRetiredByNewIdentity(c)) {
+				((CircuitImpl) c).retire();
+				retired++;
 			}
-			((CircuitImpl) c).retire();
-			retired++;
 		}
 		hiddenServiceManager.newIdentity();
 		logger.info("New identity: "+ retired +" circuits will take no new streams");

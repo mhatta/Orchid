@@ -130,6 +130,7 @@ public class TorClient {
         ensureStarted();
         logger.info("Network changed: closing the connections to relays");
         circuitManager.networkChanged();
+        directoryDownloader.networkChanged();
         connectionCache.closeAllConnections();
     }
 
@@ -173,6 +174,9 @@ public class TorClient {
      * A snapshot of the circuits Orchid has open or is building, for showing
      * to users.  The list does not change afterwards; call again for a new
      * one.  It holds no stream isolation keys (see {@link CircuitInfo}).
+     * Do not call it on the main thread of an Android app: the first call
+     * may load the GeoIP database for the country codes.  The relays are
+     * sensitive: see {@link RelayInfo}.
      *
      * @since 2.8.0
      */
@@ -184,7 +188,9 @@ public class TorClient {
      * A snapshot of the entry guards Orchid has sampled (guard-spec),
      * primary guards first in the order they are used.  Empty before the
      * guard state is loaded, when entry guards are not used, and with
-     * bridges.
+     * bridges.  The guards identify the client for months: show them to the
+     * user, but see {@link RelayInfo} for what not to do with them.  Not on
+     * the main thread of an Android app, as {@link #getCircuits()}.
      *
      * @since 2.8.0
      */

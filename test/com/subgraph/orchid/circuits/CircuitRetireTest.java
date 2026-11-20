@@ -41,6 +41,14 @@ public class CircuitRetireTest {
 		return new StreamExitRequest(lock, "example.com", 443, null);
 	}
 
+	/* InternalCircuitImpl implements DirectoryCircuit too; it must be retired all the same. */
+	@Test
+	public void testNewIdentityRetiresOnionCircuitsButNotDirectoryCircuits() {
+		assertTrue(CircuitManagerImpl.isRetiredByNewIdentity(circuit()));
+		assertTrue(CircuitManagerImpl.isRetiredByNewIdentity(new InternalCircuitImpl(null, null)));
+		assertFalse(CircuitManagerImpl.isRetiredByNewIdentity(new DirectoryCircuitImpl(null, null)));
+	}
+
 	@Test
 	public void testCircuitTakesStreamsUntilRetired() {
 		final ExitCircuitImpl c = circuit();
