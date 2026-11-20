@@ -24,11 +24,14 @@ public class Socks5Request extends SocksRequest {
 	final static int SOCKS5_STATUS_FAILURE = 1;
 	final static int SOCKS5_STATUS_CONNECTION_REFUSED = 5;
 	final static int SOCKS5_STATUS_COMMAND_NOT_SUPPORTED = 7;
+	final static int SOCKS5_STATUS_ADDRESS_TYPE_NOT_SUPPORTED = 8;
 	
 	private int command;
 	private int addressType;
 	private byte[] addressBytes = new byte[0];
 	private byte[] portBytes = new byte[0];
+	/* Set when the request names an address type Orchid cannot connect to (IPv6, or unknown). */
+	private boolean addressTypeUnsupported;
 	
 	Socks5Request(TorConfig config, Socket socket) {
 		super(config, socket);
@@ -69,8 +72,11 @@ public class Socks5Request extends SocksRequest {
 			setIPv4AddressData(addressBytes);
 		else if(addressType == SOCKS5_ADDRESS_HOSTNAME)
 			setHostname(addressBytesToHostname());
-		else 
-			throw new SocksRequestException();
+		else {
+			// IPv6: exit streams to IPv6 addresses are not supported yet.
+			addressTypeUnsupported = true;
+			throw new SocksRequestException("SOCKS 5 address type "+ addressType +" is not supported");
+		}
 		setPortData(portBytes);		
 	}
 	
@@ -79,7 +85,9 @@ public class Socks5Request extends SocksRequest {
 	}
 
 	public void sendError(boolean isUnsupportedCommand) throws SocksRequestException  {
-		if(isUnsupportedCommand) {
+		if(addressTypeUnsupported) {
+			sendResponse(SOCKS5_STATUS_ADDRESS_TYPE_NOT_SUPPORTED);
+		} else if(isUnsupportedCommand) {
 			sendResponse(SOCKS5_STATUS_COMMAND_NOT_SUPPORTED);
 		} else {
 			sendResponse(SOCKS5_STATUS_FAILURE);
@@ -175,7 +183,16 @@ public class Socks5Request extends SocksRequest {
 		case SOCKS5_ADDRESS_HOSTNAME:
 			return readHostnameData();
 		default:
-			throw new SocksRequestException();
+			/*
+			 * The length of an unknown address is unknown too, so the rest
+			 * of the request cannot be read.  Answer with an IPv4-shaped
+			 * reply (RFC 1928 requires an address in it) and close.
+			 */
+			addressTypeUnsupported = true;
+			addressType = SOCKS5_ADDRESS_IPV4;
+			addressBytes = new byte[4];
+			portBytes = new byte[2];
+			throw new SocksRequestException("Unknown SOCKS 5 address type");
 		}
 	}
 	

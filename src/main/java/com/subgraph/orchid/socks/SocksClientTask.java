@@ -76,6 +76,8 @@ public class SocksClientTask implements Runnable {
         case 'H':
         case 'G':
         case 'P':
+        case 'C':
+            // HEAD, GET, POST, PUT, and CONNECT from a client set up to use an HTTP proxy
             sendHttpPage();
             break;
         case 4:
