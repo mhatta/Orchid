@@ -4,7 +4,7 @@ package com.subgraph.orchid.crypto;
  * X25519 (RFC 7748) in the calling convention of NaCl's crypto_scalarmult,
  * which Orchid has used since it took this class from jnacl.
  *
- * <p>Since 2.6.1 the arithmetic is {@link X25519}, derived from Bouncy
+ * <p>Since 2.7.0 the arithmetic is {@link X25519}, derived from Bouncy
  * Castle: a Montgomery ladder with constant-time conditional swaps and no
  * secret-dependent branches or array indices.  The earlier code, a port
  * of the NaCl reference implementation, selected with arithmetic too, but
