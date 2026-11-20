@@ -15,6 +15,7 @@ import javax.net.ssl.SSLEngineResult;
 import javax.net.ssl.SSLEngineResult.HandshakeStatus;
 import javax.net.ssl.SSLEngineResult.Status;
 import javax.net.ssl.SSLException;
+import javax.net.ssl.SSLHandshakeException;
 import javax.net.ssl.SSLSession;
 
 /**
@@ -142,6 +143,7 @@ public class SSLEngineManager {
                     logger.debug("startHandshake()");
                     engine.beginHandshake();
                     runHandshake(true);
+                    checkHandshakeCompleted();
                     if(verifyHost != null) {
                         HostnameChecker.verify(verifyHost, engine.getSession());
                     }
@@ -166,6 +168,27 @@ public class SSLEngineManager {
          * name, is not reported as completed.
          */
         handshakeFinished();
+    }
+
+    /*
+     * runHandshake() also returns when the connection ends in the middle of
+     * the handshake: the server, or the exit relay, closed it.  Without this
+     * check the host name check ran on the engine's empty session and threw
+     * SSLPeerUnverifiedException ("No peer certificate" on Android), which
+     * hid the real cause and which OkHttp, taking it for a certificate
+     * problem, does not retry.
+     */
+    private void checkHandshakeCompleted() throws SSLHandshakeException {
+        final HandshakeStatus hs = engine.getHandshakeStatus();
+        if(hs == HandshakeStatus.NOT_HANDSHAKING || hs == HandshakeStatus.FINISHED) {
+            if(!engine.isInboundDone() && !engine.isOutboundDone()) {
+                return;
+            }
+        }
+        final String why = engine.isInboundDone()
+                ? "the server closed the TLS connection"
+                : "the connection was closed (handshake status "+ hs +")";
+        throw new SSLHandshakeException("TLS handshake did not complete: "+ why);
     }
 
     /* Called with both locks held: remember why, and close the connection. */

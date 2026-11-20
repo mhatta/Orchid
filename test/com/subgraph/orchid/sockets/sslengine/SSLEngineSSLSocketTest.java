@@ -484,6 +484,53 @@ public class SSLEngineSSLSocketTest {
 		});
 	}
 
+	/*
+	 * A server (or an exit relay) that closes the connection in the middle of
+	 * the handshake: the handshake must fail as a handshake failure, not with
+	 * SSLPeerUnverifiedException from a host name check on an empty session
+	 * ("No peer certificate" on Android 7, which OkHttp does not retry).
+	 */
+	@Test(timeout = 30000)
+	public void testConnectionClosedDuringHandshake() throws Exception {
+		final java.net.ServerSocket plain = new java.net.ServerSocket(0, 5, InetAddress.getLoopbackAddress());
+		final Thread t = new Thread(new Runnable() {
+			public void run() {
+				try {
+					final Socket c = plain.accept();
+					c.getInputStream().read(new byte[512]);   // part of the ClientHello
+					c.close();
+				} catch(IOException e) {
+					// test over
+				}
+			}
+		});
+		t.start();
+		try {
+			final Socket raw = new Socket(InetAddress.getLoopbackAddress(), plain.getLocalPort());
+			raw.setSoTimeout(10000);
+			final SSLEngineSSLSocket s = new SSLEngineSSLSocket(raw, clientContext(), HOST, 443);
+			try {
+				s.startHandshake();
+				fail("handshake succeeded with a server that hung up");
+			} catch(SSLPeerUnverifiedException e) {
+				fail("reported as a certificate problem: "+ e);
+			} catch(javax.net.ssl.SSLHandshakeException e) {
+				assertTrue(e.getMessage(), e.getMessage().contains("did not complete"));
+			} catch(IOException e) {
+				// a reset is a fine answer too
+			}
+			try {
+				s.getOutputStream().write(1);
+				fail("write after a failed handshake");
+			} catch(IOException expected) {
+			}
+			s.close();
+		} finally {
+			plain.close();
+			t.join(5000);
+		}
+	}
+
 	private static String bestProtocol() throws Exception {
 		return Arrays.asList(SSLContext.getDefault().getSupportedSSLParameters().getProtocols()).contains("TLSv1.3") ? "TLSv1.3" : "TLSv1.2";
 	}
