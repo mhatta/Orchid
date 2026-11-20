@@ -17,11 +17,18 @@ public class SocksClientTask implements Runnable {
     private final TorConfig config;
     private final Socket socket;
     private final CircuitManager circuitManager;
+    /* Called once the request has been read: see SocksPortListenerImpl.Handshake. */
+    private final Runnable requestRead;
 
     SocksClientTask(TorConfig config, Socket socket, CircuitManager circuitManager) {
+        this(config, socket, circuitManager, null);
+    }
+
+    SocksClientTask(TorConfig config, Socket socket, CircuitManager circuitManager, Runnable requestRead) {
         this.config = config;
         this.socket = socket;
         this.circuitManager = circuitManager;
+        this.requestRead = requestRead;
     }
 
     @Override
@@ -38,15 +45,14 @@ public class SocksClientTask implements Runnable {
     }
 
     /*
-     * A client has SocksTimeout to send its request; a client that connects
-     * and then says nothing would otherwise hold a thread for ever.  The
-     * timeout is lifted once the stream is open (runOpenConnection).
+     * Each read of the request waits at most HANDSHAKE_TIMEOUT_MS (or
+     * SocksTimeout, if shorter); the listener also limits the time for the
+     * whole request.  The timeout is lifted once the stream is open
+     * (runOpenConnection).
      */
     private void setNegotiationTimeout() {
-        final long timeout = config.getSocksTimeout();
-        if(timeout <= 0) {
-            return;
-        }
+        final long socksTimeout = config.getSocksTimeout();
+        final long timeout = (socksTimeout > 0) ? Math.min(socksTimeout, SocksPortListenerImpl.HANDSHAKE_TIMEOUT_MS) : SocksPortListenerImpl.HANDSHAKE_TIMEOUT_MS;
         try {
             socket.setSoTimeout((int) Math.min(timeout, Integer.MAX_VALUE));
         } catch (SocketException e) {
@@ -95,6 +101,9 @@ public class SocksClientTask implements Runnable {
     private void processRequest(SocksRequest request) {
         try {
             request.readRequest();
+            if(requestRead != null) {
+                requestRead.run();
+            }
             if(!request.isConnectRequest()) {
                 logger.warn("Non connect command ("+ request.getCommandCode() + ")");
                 request.sendError(true);

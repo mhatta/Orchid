@@ -2,6 +2,7 @@ package com.subgraph.orchid.socks;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -14,8 +15,10 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.After;
 import org.junit.Before;
@@ -26,7 +29,8 @@ import com.subgraph.orchid.OpenFailedException;
 import com.subgraph.orchid.config.TorConfigImpl;
 
 /**
- * Replies to requests the SOCKS port cannot serve (L17).
+ * Limits on SOCKS clients that connect and do not send their request
+ * (L15), and the replies to requests the SOCKS port cannot serve (L17).
  */
 public class SocksHandshakeTest {
 	private TorConfigImpl config;
@@ -77,6 +81,66 @@ public class SocksHandshakeTest {
 			out.write(buffer, 0, n);
 		}
 		return out.toByteArray();
+	}
+
+	private static void assertClosedWithin(Socket s, long millis) throws IOException {
+		final long start = System.nanoTime();
+		try {
+			while(s.getInputStream().read() != -1) {
+				// a reply, if any, before the close
+			}
+		} catch(SocketTimeoutException e) {
+			fail("the SOCKS port did not close the connection");
+		} catch(IOException e) {
+			// a reset is a close too
+		}
+		final long elapsed = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+		assertTrue("closed after "+ elapsed +" ms", elapsed < millis);
+	}
+
+	@Test
+	public void testHandshakeTimeoutIsAtMostTenSeconds() {
+		config.setSocksTimeout(0);
+		assertEquals(SocksPortListenerImpl.HANDSHAKE_TIMEOUT_MS, listener.getHandshakeTimeout());
+		config.setSocksTimeout(500);
+		assertEquals(500, listener.getHandshakeTimeout());
+		config.setSocksTimeout(120 * 1000);
+		assertEquals(SocksPortListenerImpl.HANDSHAKE_TIMEOUT_MS, listener.getHandshakeTimeout());
+	}
+
+	/* Sending one byte now and then does not keep the connection open: the time is for the whole request. */
+	@Test(timeout = 20000)
+	public void testTricklingClientIsDisconnected() throws Exception {
+		config.setSocksTimeout(1000);
+		listener.addListeningPort(port);
+		final Socket s = connect();
+		final OutputStream out = s.getOutputStream();
+		final long start = System.nanoTime();
+		try {
+			out.write(5);
+			out.write(1);
+			for(int i = 0; i < 20; i++) {
+				Thread.sleep(300);
+				out.write(0);   // never a complete request, each byte well within the 1 s read timeout
+			}
+			fail("the connection was still open after 6 s");
+		} catch(IOException expected) {
+			final long elapsed = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+			assertTrue("closed after "+ elapsed +" ms", elapsed < 4000);
+		}
+	}
+
+	/* Silent clients fill only the handshake slots; the client after them is refused at once. */
+	@Test(timeout = 30000)
+	public void testSilentClientsAreLimited() throws Exception {
+		listener.addListeningPort(port);
+		for(int i = 0; i < SocksPortListenerImpl.MAX_HANDSHAKING_CLIENTS; i++) {
+			connect();
+		}
+		// Let the listener accept them all.
+		Thread.sleep(500);
+		final Socket refused = connect();
+		assertClosedWithin(refused, 3000);
 	}
 
 	@Test(timeout = 20000)

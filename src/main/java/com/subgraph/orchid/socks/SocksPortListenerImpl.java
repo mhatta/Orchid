@@ -10,10 +10,15 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.subgraph.orchid.CircuitManager;
 import com.subgraph.orchid.SocksPortListener;
+import com.subgraph.orchid.Threading;
 import com.subgraph.orchid.TorConfig;
 import com.subgraph.orchid.TorException;
 import com.subgraph.orchid.logging.Logger;
@@ -24,10 +29,27 @@ public class SocksPortListenerImpl implements SocksPortListener {
     /*
      * The most SOCKS clients served at once.  Every client takes a thread
      * (two more once its stream is open), so without a limit a flood of
-     * connections exhausts the threads and memory of the whole JVM.
+     * connections exhausts the threads and memory of the whole JVM.  256
+     * clients are up to 768 threads, already a lot for a small phone.
      */
-    static final int MAX_CONCURRENT_CLIENTS = 512;
+    static final int MAX_CONCURRENT_CLIENTS = 256;
     private final Semaphore clientSlots = new Semaphore(MAX_CONCURRENT_CLIENTS);
+
+    /*
+     * The most clients that have connected but not yet sent their whole
+     * request, and how long they have to send it.  On Android every app on
+     * the device can connect to the loopback port, whether or not it knows
+     * the SOCKS password; without these limits an app that opened a few
+     * hundred connections and sent nothing stopped the proxy for everyone
+     * else for SocksTimeout (two minutes by default).  A real client sends
+     * its request at once, so ten seconds is plenty.  The time is for the
+     * whole request, not for each read, so a client cannot keep its slot by
+     * sending one byte now and then.
+     */
+    static final int MAX_HANDSHAKING_CLIENTS = 64;
+    static final long HANDSHAKE_TIMEOUT_MS = 10 * 1000;
+    private final Semaphore handshakeSlots = new Semaphore(MAX_HANDSHAKING_CLIENTS);
+    private final ScheduledExecutorService handshakeWatchdog = Threading.newScheduledPool("SOCKS handshake watchdog");
     private final Set<Integer> listeningPorts = new HashSet<Integer>();
     private final Map<Integer, AcceptTask> acceptThreads = new HashMap<Integer, AcceptTask>();
     private final TorConfig config;
@@ -72,6 +94,7 @@ public class SocksPortListenerImpl implements SocksPortListener {
                 t.stop();
             }
             executor.shutdownNow();
+            handshakeWatchdog.shutdownNow();
             isStopped = true;
         }
     }
@@ -82,13 +105,51 @@ public class SocksPortListenerImpl implements SocksPortListener {
         executor.execute(task);
     }
 
-    private Runnable newClientSocket(final Socket s) {
-        final Runnable task = new SocksClientTask(config, s, circuitManager);
+    /* The time a client has to send its whole request. */
+    long getHandshakeTimeout() {
+        final long t = config.getSocksTimeout();
+        return (t > 0) ? Math.min(t, HANDSHAKE_TIMEOUT_MS) : HANDSHAKE_TIMEOUT_MS;
+    }
+
+    /*
+     * Holds a handshake slot until the client has sent its request, and
+     * closes the socket if it has not done so in time.
+     */
+    private final class Handshake implements Runnable {
+        private final AtomicBoolean done = new AtomicBoolean();
+        private volatile ScheduledFuture<?> closer;
+
+        void start(final Socket s) {
+            closer = handshakeWatchdog.schedule(new Runnable() {
+                public void run() {
+                    if(!done.get()) {
+                        logger.debug("SOCKS client sent no complete request in "+ getHandshakeTimeout() +" ms, closing");
+                        closeQuietly(s);
+                    }
+                }
+            }, getHandshakeTimeout(), TimeUnit.MILLISECONDS);
+        }
+
+        /* The request has been read (or the client is gone). */
+        public void run() {
+            if(done.compareAndSet(false, true)) {
+                final ScheduledFuture<?> c = closer;
+                if(c != null) {
+                    c.cancel(false);
+                }
+                handshakeSlots.release();
+            }
+        }
+    }
+
+    private Runnable newClientSocket(final Socket s, final Handshake handshake) {
+        final Runnable task = new SocksClientTask(config, s, circuitManager, handshake);
         return new Runnable() {
             public void run() {
                 try {
                     task.run();
                 } finally {
+                    handshake.run();
                     clientSlots.release();
                 }
             }
@@ -101,9 +162,18 @@ public class SocksPortListenerImpl implements SocksPortListener {
             closeQuietly(s);
             return;
         }
+        if(!handshakeSlots.tryAcquire()) {
+            clientSlots.release();
+            logger.warn("Too many SOCKS clients that have not sent a request (limit "+ MAX_HANDSHAKING_CLIENTS +"), refusing a connection");
+            closeQuietly(s);
+            return;
+        }
+        final Handshake handshake = new Handshake();
         try {
-            executor.execute(newClientSocket(s));
+            handshake.start(s);
+            executor.execute(newClientSocket(s, handshake));
         } catch(RuntimeException e) {
+            handshake.run();
             clientSlots.release();
             closeQuietly(s);
             throw e;
