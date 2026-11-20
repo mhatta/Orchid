@@ -30,11 +30,16 @@ public interface CircuitManager {
 	 * Use new circuits for all streams opened from now on, as Tor's NEWNYM
 	 * signal does.  Streams already open are not interrupted: the circuits
 	 * they use take no new streams and are closed when the streams end.
-	 * The default implementation does nothing.
+	 * At most one new identity takes effect every 10 seconds, as in Tor; one
+	 * asked for sooner is delayed, and merged with any other asked for in
+	 * the meantime.  The default implementation does nothing.
 	 *
+	 * @return 0 if the new identity took effect now, or the milliseconds
+	 *         until it does
 	 * @since 2.8.0
 	 */
-	default void newIdentity() {
+	default long newIdentity() {
+		return 0;
 	}
 
 	/**

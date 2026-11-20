@@ -143,11 +143,22 @@ public class TorClient {
      * signal.  Streams already open keep their circuits until they end.
      * Entry guards are kept, as in Tor.
      *
+     * <p>As in Tor, a new identity takes effect at most once every 10
+     * seconds: each one makes Orchid build new circuits, and a button
+     * pressed again and again would otherwise keep building them.  A new
+     * identity asked for sooner is not dropped but delayed until the 10
+     * seconds have passed; those asked for while one is waiting are merged
+     * into it.  An app can show the returned delay ("New identity in 7
+     * seconds") or disable its button meanwhile.  Streams opened before the
+     * delayed new identity takes effect may still use the old circuits.
+     *
+     * @return 0 if the new identity took effect now, or the milliseconds
+     *         until it does
      * @since 2.8.0
      */
-    public void newIdentity() {
+    public long newIdentity() {
         ensureStarted();
-        circuitManager.newIdentity();
+        return circuitManager.newIdentity();
     }
 
     /**

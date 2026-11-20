@@ -73,6 +73,7 @@ public class CircuitManagerImpl implements CircuitManager, DashboardRenderable {
 	private final TorInitializationTracker initializationTracker;
 	private final CircuitPathChooser pathChooser;
 	private final TrafficCounter trafficCounter;
+	private final NewIdentityLimiter newIdentityLimiter;
 
 	CircuitPathChooser getPathChooser() {
 		return pathChooser;
@@ -110,6 +111,12 @@ public class CircuitManagerImpl implements CircuitManager, DashboardRenderable {
 		this.initializationTracker = initializationTracker;
 		this.hiddenServiceManager = new HiddenServiceManager(config, directory, this);
 		
+		this.newIdentityLimiter = new NewIdentityLimiter(scheduledExecutor, new Runnable() {
+			public void run() {
+				applyNewIdentity();
+			}
+		});
+
 		directoryDownloader.setCircuitManager(this);
 	}
 
@@ -279,7 +286,11 @@ public class CircuitManagerImpl implements CircuitManager, DashboardRenderable {
 	}
 
 	@Override
-	public void newIdentity() {
+	public long newIdentity() {
+		return newIdentityLimiter.request();
+	}
+
+	private void applyNewIdentity() {
 		int retired = 0;
 		for(Circuit c: getCircuitsByFilter(null)) {
 			if(isRetiredByNewIdentity(c)) {
