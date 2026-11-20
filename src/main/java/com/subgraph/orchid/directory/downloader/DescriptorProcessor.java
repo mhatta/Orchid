@@ -3,6 +3,7 @@ package com.subgraph.orchid.directory.downloader;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -18,14 +19,22 @@ public class DescriptorProcessor {
 	private final static int MAX_DL_TO_DELAY = 16;
 	private final static int MIN_DL_REQUESTS = 3;
 	private final static int MAX_CLIENT_INTERVAL_WITHOUT_REQUEST = 10 * 60 * 1000;
-	/* How often a download asked for with Directory.requestDescriptorsNow() is tried again. */
-	private final static int URGENT_RETRY_INTERVAL = 15 * 1000;
+	/*
+	 * A download asked for with Directory.requestDescriptorsNow() is tried
+	 * again after 15 seconds, then after twice as long each time it fails,
+	 * up to the ten minutes between ordinary downloads.
+	 */
+	private final static long URGENT_RETRY_INITIAL = 15 * 1000;
+	private final static long URGENT_RETRY_MAX = MAX_CLIENT_INTERVAL_WITHOUT_REQUEST;
 
 	private final TorConfig config;
 	private final Directory directory;
 	
 	private Date lastDescriptorDownload;
 	private long lastUrgentDownload = Long.MIN_VALUE;
+	private long urgentRetryInterval = URGENT_RETRY_INITIAL;
+	/* Identities whose descriptors the last urgent download asked for. */
+	private Set<HexDigest> lastUrgentIdentities = new HashSet<HexDigest>();
 	
 	
 	/* Milliseconds since the epoch; replaced in tests. */
@@ -60,21 +69,59 @@ public class DescriptorProcessor {
 		return diff > MAX_CLIENT_INTERVAL_WITHOUT_REQUEST;
 	}
 
-	private boolean isUrgent(List<Router> downloadables) {
+	/* The routers among downloadables whose descriptors were asked for with requestDescriptorsNow(). */
+	private List<Router> getRequestedNow(List<Router> downloadables) {
 		final Set<HexDigest> wanted = directory.getDescriptorsRequestedNow();
+		final List<Router> requested = new ArrayList<Router>();
 		if(wanted == null || wanted.isEmpty()) {
-			return false;
-		}
-		final long now = clock.now();
-		if(lastUrgentDownload != Long.MIN_VALUE && now - lastUrgentDownload < URGENT_RETRY_INTERVAL) {
-			return false;
+			return requested;
 		}
 		for(Router r: downloadables) {
 			if(wanted.contains(r.getIdentityHash())) {
-				return true;
+				requested.add(r);
 			}
 		}
-		return false;
+		return requested;
+	}
+
+	private static Set<HexDigest> identitiesOf(List<Router> routers) {
+		final Set<HexDigest> ids = new HashSet<HexDigest>();
+		for(Router r: routers) {
+			ids.add(r.getIdentityHash());
+		}
+		return ids;
+	}
+
+	/* True if some requested descriptor has not been asked for since it was requested. */
+	private boolean hasNewRequest(List<Router> requested) {
+		return !lastUrgentIdentities.containsAll(identitiesOf(requested));
+	}
+
+	private boolean isUrgentDue(List<Router> requested) {
+		if(requested.isEmpty()) {
+			return false;
+		}
+		if(lastUrgentDownload == Long.MIN_VALUE || hasNewRequest(requested)) {
+			return true;
+		}
+		return clock.now() - lastUrgentDownload >= urgentRetryInterval;
+	}
+
+	/* Called each time a download includes the requested descriptors. */
+	private void recordUrgentDownload(List<Router> requested) {
+		if(lastUrgentDownload == Long.MIN_VALUE || hasNewRequest(requested)) {
+			urgentRetryInterval = URGENT_RETRY_INITIAL;
+		} else {
+			urgentRetryInterval = Math.min(urgentRetryInterval * 2, URGENT_RETRY_MAX);
+		}
+		lastUrgentDownload = clock.now();
+		lastUrgentIdentities = identitiesOf(requested);
+	}
+
+	private void resetUrgent() {
+		lastUrgentDownload = Long.MIN_VALUE;
+		urgentRetryInterval = URGENT_RETRY_INITIAL;
+		lastUrgentIdentities = new HashSet<HexDigest>();
 	}
 
 	/*
@@ -138,20 +185,30 @@ public class DescriptorProcessor {
 			return Collections.emptyList();
 		}
 		final List<Router> downloadables = directory.getRoutersWithDownloadableDescriptors();
-		if(isUrgent(downloadables)) {
+		final List<Router> requested = getRequestedNow(downloadables);
+		if(requested.isEmpty()) {
+			resetUrgent();
+		}
+		if(canDownloadDescriptors(downloadables.size())) {
+			if(!requested.isEmpty()) {
+				recordUrgentDownload(requested);
+			}
+			lastDescriptorDownload = new Date(clock.now());
+			return partitionDescriptors(downloadables);
+		}
+		if(isUrgentDue(requested)) {
 			/*
 			 * A descriptor a circuit is waiting for (a primary guard's):
-			 * download now, not when 16 are missing or 10 minutes have
-			 * passed, and try again every 15 seconds while it is missing.
-			 * Each try goes through a directory guard chosen again, so a
-			 * guard that withholds the descriptor does not keep it away.
+			 * download it now, not when 16 are missing or 10 minutes have
+			 * passed. Only the requested descriptors are fetched, and a
+			 * descriptor that stays missing is tried again after 15
+			 * seconds, then 30, 60 and so on up to 10 minutes. Each try
+			 * goes through a directory guard chosen again, so a guard that
+			 * withholds the descriptor does not keep it away.
 			 */
-			lastUrgentDownload = clock.now();
-		} else if(!canDownloadDescriptors(downloadables.size())) {
-			return Collections.emptyList();
+			recordUrgentDownload(requested);
+			return partitionDescriptors(requested);
 		}
-		
-		lastDescriptorDownload = new Date(clock.now());
-		return partitionDescriptors(downloadables);
+		return Collections.emptyList();
 	}
 }

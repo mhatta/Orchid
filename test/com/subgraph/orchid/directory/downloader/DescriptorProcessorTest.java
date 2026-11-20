@@ -23,6 +23,8 @@ import com.subgraph.orchid.data.HexDigest;
 /*
  * M7: a missing descriptor that a circuit waits for is downloaded at once,
  * not when 16 are missing or ten minutes have passed.
+ * L14: only the requested descriptors are fetched, and a descriptor that
+ * stays missing is tried less and less often.
  */
 public class DescriptorProcessorTest {
 	private static final long SECOND = 1000;
@@ -110,12 +112,70 @@ public class DescriptorProcessorTest {
 		assertEquals(3, requested());
 		time.addAndGet(5 * SECOND);
 		requestedNow.add(digest(1, 0));
-		assertEquals(3, requested());
-		// Tried again every 15 seconds while still missing.
+		// Only the requested descriptor, not every missing one.
+		assertEquals(1, requested());
+		// Tried again 15 seconds later while still missing.
 		time.addAndGet(5 * SECOND);
 		assertEquals(0, requested());
 		time.addAndGet(11 * SECOND);
+		assertEquals(1, requested());
+	}
+
+	@Test
+	public void retriesBackOff() {
 		assertEquals(3, requested());
+		requestedNow.add(digest(1, 0));
+		time.addAndGet(SECOND);
+		assertEquals(1, requested());
+		// 15, 30, 60, 120 and 240 seconds (ten minutes from the start the
+		// ordinary download takes over).
+		long wait = 15 * SECOND;
+		for(int i = 0; i < 5; i++) {
+			time.addAndGet(wait - SECOND);
+			assertEquals("try " + i + " too early", 0, requested());
+			time.addAndGet(SECOND);
+			assertEquals("try " + i, 1, requested());
+			wait *= 2;
+		}
+	}
+
+	@Test
+	public void newRequestIsDownloadedDespiteBackoff() {
+		assertEquals(3, requested());
+		requestedNow.add(digest(1, 0));
+		time.addAndGet(SECOND);
+		assertEquals(1, requested());
+		time.addAndGet(15 * SECOND);
+		assertEquals(1, requested());
+		// Now waiting 30 seconds for router 1; a request for router 2 goes at once.
+		time.addAndGet(SECOND);
+		requestedNow.add(digest(2, 0));
+		assertEquals(2, requested());
+		// And the wait starts again at 15 seconds.
+		time.addAndGet(15 * SECOND);
+		assertEquals(2, requested());
+	}
+
+	@Test
+	public void backoffResetsWhenRequestIsSatisfied() {
+		assertEquals(3, requested());
+		requestedNow.add(digest(1, 0));
+		time.addAndGet(SECOND);
+		assertEquals(1, requested());
+		time.addAndGet(15 * SECOND);
+		assertEquals(1, requested());
+		// Router 1's descriptor arrives.
+		requestedNow.clear();
+		downloadable.remove(1);
+		time.addAndGet(SECOND);
+		assertEquals(0, requested());
+		// Later it is missing and wanted again: fetched at once, retried after 15 seconds.
+		downloadable.add(router(1));
+		requestedNow.add(digest(1, 0));
+		time.addAndGet(SECOND);
+		assertEquals(1, requested());
+		time.addAndGet(15 * SECOND);
+		assertEquals(1, requested());
 	}
 
 	@Test
