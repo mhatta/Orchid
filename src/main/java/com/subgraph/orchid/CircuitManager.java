@@ -1,5 +1,6 @@
 package com.subgraph.orchid;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeoutException;
 
@@ -34,6 +35,27 @@ public interface CircuitManager {
 	 * @since 2.8.0
 	 */
 	default void newIdentity() {
+	}
+
+	/**
+	 * A snapshot of the circuits: see {@link TorClient#getCircuits()}.  The
+	 * default implementation returns an empty list.
+	 *
+	 * @since 2.8.0
+	 */
+	default List<CircuitInfo> getCircuitInfo() {
+		return Collections.emptyList();
+	}
+
+	/**
+	 * A snapshot of the sampled entry guards: see
+	 * {@link TorClient#getEntryGuards()}.  The default implementation
+	 * returns an empty list.
+	 *
+	 * @since 2.8.0
+	 */
+	default List<GuardInfo> getEntryGuardInfo() {
+		return Collections.emptyList();
 	}
 	/**
 	 * Attempt to open an exit stream to the specified destination <code>hostname</code> and

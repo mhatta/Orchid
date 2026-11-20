@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.concurrent.TimeoutException;
 
 import com.subgraph.orchid.Circuit;
+import com.subgraph.orchid.CircuitInfo;
 import com.subgraph.orchid.CircuitNode;
 import com.subgraph.orchid.DirectoryCircuit;
 import com.subgraph.orchid.HiddenServiceCircuit;
@@ -119,6 +120,20 @@ public class InternalCircuitImpl extends CircuitImpl implements InternalCircuit,
 		}
 	}
 
+
+	@Override
+	protected CircuitInfo.Purpose getInfoPurpose() {
+		switch(type) {
+		case HS_INTRODUCTION:
+			return CircuitInfo.Purpose.ONION_SERVICE_INTRODUCTION;
+		case HS_DIRECTORY:
+			return CircuitInfo.Purpose.ONION_SERVICE_DIRECTORY;
+		case HS_CIRCUIT:
+			return CircuitInfo.Purpose.ONION_SERVICE;
+		default:
+			return CircuitInfo.Purpose.INTERNAL;
+		}
+	}
 
 	@Override
 	protected String getCircuitTypeLabel() {

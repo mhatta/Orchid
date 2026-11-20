@@ -57,6 +57,10 @@ public class CircuitStatus {
 		return now - then;
 	}
 
+	CircuitState getState() {
+		return state;
+	}
+
 	synchronized boolean isDirty() {
 		return timestampDirty != 0;
 	}

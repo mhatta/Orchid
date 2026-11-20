@@ -3,6 +3,7 @@ package com.subgraph.orchid.circuits;
 import java.util.List;
 import java.util.concurrent.TimeoutException;
 
+import com.subgraph.orchid.CircuitInfo;
 import com.subgraph.orchid.DirectoryCircuit;
 import com.subgraph.orchid.Router;
 import com.subgraph.orchid.Stream;
@@ -33,6 +34,11 @@ public class DirectoryCircuitImpl extends CircuitImpl implements DirectoryCircui
 			return prechosenPath;
 		}
 		return pathChooser.chooseDirectoryPath();
+	}
+
+	@Override
+	protected CircuitInfo.Purpose getInfoPurpose() {
+		return CircuitInfo.Purpose.DIRECTORY;
 	}
 
 	@Override

@@ -9,6 +9,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -16,6 +17,8 @@ import java.util.concurrent.TimeUnit;
 import com.subgraph.orchid.ConsensusDocument;
 import com.subgraph.orchid.Directory;
 import com.subgraph.orchid.DirectoryDownloader;
+import com.subgraph.orchid.GuardInfo;
+import com.subgraph.orchid.RelayInfo;
 import com.subgraph.orchid.Router;
 import com.subgraph.orchid.Tor;
 import com.subgraph.orchid.TorConfig;
@@ -758,6 +761,73 @@ public class EntryGuards {
 
     private int primaryDirGuardsToUse() {
         return param("guard-n-primary-dir-guards-to-use", DEFAULT_N_PRIMARY_DIR_GUARDS_TO_USE, 1, 100);
+    }
+
+    /**
+     * A snapshot of the sampled guards, the primary guards first in their
+     * order, for applications (TorClient#getEntryGuards()).  Empty before
+     * the guard state has been loaded and with bridges, which do not use
+     * the sample.
+     */
+    public List<GuardInfo> getGuardInfo() {
+        if(isUsingBridges()) {
+            return Collections.emptyList();
+        }
+        final List<GuardCopy> copies = new ArrayList<GuardCopy>();
+        synchronized (lock) {
+            // SampledGuard is not thread-safe: copy what is needed under the lock.
+            for(SampledGuard g: primary) {
+                copies.add(new GuardCopy(g, true));
+            }
+            for(SampledGuard g: sampled) {
+                if(!primary.contains(g)) {
+                    copies.add(new GuardCopy(g, false));
+                }
+            }
+        }
+        // The directory is not called under the lock.
+        final List<GuardInfo> result = new ArrayList<GuardInfo>();
+        for(GuardCopy c: copies) {
+            final Router router = directory.getRouterByIdentity(c.identity);
+            final String nickname = (router != null && router.getNickname() != null) ? router.getNickname() : c.nickname;
+            final String country = (router == null) ? null : router.getCountryCode();
+            final RelayInfo relay = new RelayInfo(c.identity.toString().toUpperCase(Locale.ROOT), nickname, country);
+            result.add(new GuardInfo(relay, c.primary, c.confirmed, c.listed, c.reachability, c.sampledOn, c.confirmedOn));
+        }
+        return result;
+    }
+
+    private static final class GuardCopy {
+        final HexDigest identity;
+        final String nickname;
+        final boolean primary;
+        final boolean confirmed;
+        final boolean listed;
+        final GuardInfo.Reachability reachability;
+        final Date sampledOn;
+        final Date confirmedOn;
+
+        GuardCopy(SampledGuard g, boolean primary) {
+            this.identity = g.getIdentity();
+            this.nickname = g.getNickname();
+            this.primary = primary;
+            this.confirmed = g.isConfirmed();
+            this.listed = g.isListed();
+            this.reachability = toReachability(g.getReachable());
+            this.sampledOn = g.getSampledOn();
+            this.confirmedOn = g.getConfirmedOn();
+        }
+    }
+
+    private static GuardInfo.Reachability toReachability(SampledGuard.Reachable r) {
+        switch(r) {
+        case YES:
+            return GuardInfo.Reachability.REACHABLE;
+        case NO:
+            return GuardInfo.Reachability.UNREACHABLE;
+        default:
+            return GuardInfo.Reachability.UNKNOWN;
+        }
     }
 
     /* For tests */

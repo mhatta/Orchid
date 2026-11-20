@@ -17,6 +17,7 @@ import java.util.Set;
 import org.junit.Before;
 import org.junit.Test;
 
+import com.subgraph.orchid.GuardInfo;
 import com.subgraph.orchid.Router;
 import com.subgraph.orchid.TorConfig;
 import com.subgraph.orchid.circuits.path.CircuitNodeChooser;
@@ -70,6 +71,28 @@ public class EntryGuardsTest {
 			assertSame(first, guards.chooseRandomGuard(FakeNetwork.none()));
 		}
 		assertEquals(20, net.guardState.size());
+	}
+
+	@Test
+	public void guardInfoListsPrimariesFirst() throws InterruptedException {
+		final EntryGuards guards = newGuards();
+		assertTrue(guards.getGuardInfo().isEmpty());
+		final Router first = guards.chooseRandomGuard(FakeNetwork.none());
+		guards.guardConnectionFailed(first);
+		final List<GuardInfo> info = guards.getGuardInfo();
+		assertEquals(20, info.size());
+		final List<SampledGuard> primaries = guards.getPrimaryGuards();
+		for(int i = 0; i < info.size(); i++) {
+			assertEquals("guard "+ i, i < primaries.size(), info.get(i).isPrimary());
+			assertTrue(info.get(i).isListed());
+		}
+		for(int i = 0; i < primaries.size(); i++) {
+			assertEquals(primaries.get(i).getIdentity().toString().toUpperCase(), info.get(i).getRelay().getFingerprint());
+		}
+		assertEquals(first.getIdentityHash().toString().toUpperCase(), info.get(0).getRelay().getFingerprint());
+		assertEquals(GuardInfo.Reachability.UNREACHABLE, info.get(0).getReachability());
+		assertEquals(first.getNickname(), info.get(0).getRelay().getNickname());
+		assertNotNull(info.get(0).getSampledOn());
 	}
 
 	@Test

@@ -1,6 +1,7 @@
 package com.subgraph.orchid;
 
 import java.security.NoSuchAlgorithmException;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -144,6 +145,51 @@ public class TorClient {
     public void newIdentity() {
         ensureStarted();
         circuitManager.newIdentity();
+    }
+
+    /**
+     * How far Orchid is in starting up, from 0 to 100, as reported to
+     * {@link TorInitializationListener#initializationProgress}.  100 means
+     * that Orchid is ready to open streams.
+     *
+     * @since 2.8.0
+     */
+    public int getBootstrapPercent() {
+        return initializationTracker.getBootstrapState();
+    }
+
+    /**
+     * The message for the current bootstrap step ("Loading relay
+     * descriptors"), as reported to
+     * {@link TorInitializationListener#initializationProgress}.
+     *
+     * @since 2.8.0
+     */
+    public String getBootstrapMessage() {
+        return initializationTracker.getBootstrapMessage();
+    }
+
+    /**
+     * A snapshot of the circuits Orchid has open or is building, for showing
+     * to users.  The list does not change afterwards; call again for a new
+     * one.  It holds no stream isolation keys (see {@link CircuitInfo}).
+     *
+     * @since 2.8.0
+     */
+    public List<CircuitInfo> getCircuits() {
+        return circuitManager.getCircuitInfo();
+    }
+
+    /**
+     * A snapshot of the entry guards Orchid has sampled (guard-spec),
+     * primary guards first in the order they are used.  Empty before the
+     * guard state is loaded, when entry guards are not used, and with
+     * bridges.
+     *
+     * @since 2.8.0
+     */
+    public List<GuardInfo> getEntryGuards() {
+        return circuitManager.getEntryGuardInfo();
     }
 
     public Directory getDirectory() {

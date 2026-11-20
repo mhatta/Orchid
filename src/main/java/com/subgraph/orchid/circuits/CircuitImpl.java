@@ -5,23 +5,27 @@ import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeoutException;
 
 import com.subgraph.orchid.Cell;
 import com.subgraph.orchid.Circuit;
+import com.subgraph.orchid.CircuitInfo;
 import com.subgraph.orchid.CircuitNode;
 import com.subgraph.orchid.Connection;
 import com.subgraph.orchid.DirectoryCircuit;
 import com.subgraph.orchid.ExitCircuit;
 import com.subgraph.orchid.InternalCircuit;
 import com.subgraph.orchid.RelayCell;
+import com.subgraph.orchid.RelayInfo;
 import com.subgraph.orchid.Router;
 import com.subgraph.orchid.Stream;
 import com.subgraph.orchid.StreamConnectFailedException;
 import com.subgraph.orchid.TorException;
 import com.subgraph.orchid.circuits.path.CircuitPathChooser;
 import com.subgraph.orchid.circuits.path.PathSelectionFailedException;
+import com.subgraph.orchid.data.HexDigest;
 import com.subgraph.orchid.dashboard.DashboardRenderable;
 import com.subgraph.orchid.dashboard.DashboardRenderer;
 import com.subgraph.orchid.logging.Logger;
@@ -300,6 +304,46 @@ public abstract class CircuitImpl implements Circuit, DashboardRenderable {
     }
 
     protected abstract String getCircuitTypeLabel();
+
+    /** What the circuit is for, for {@link #getInfo()}. */
+    protected abstract CircuitInfo.Purpose getInfoPurpose();
+
+    /** True if the circuit serves only streams with one isolation key. */
+    protected boolean isIsolatedForInfo() {
+        return false;
+    }
+
+    /** A snapshot of the circuit for applications: see TorClient#getCircuits(). */
+    CircuitInfo getInfo() {
+        final List<RelayInfo> path = new ArrayList<RelayInfo>();
+        for(CircuitNode node: nodeList) {
+            final Router r = node.getRouter();
+            if(r != null) {
+                path.add(relayInfo(r));
+            }
+        }
+        final List<Stream> streams = getActiveStreams();
+        return new CircuitInfo(getInfoPurpose(), getInfoState(), path, streams == null ? 0 : streams.size(),
+                isIsolatedForInfo(), getSecondsDirty());
+    }
+
+    static RelayInfo relayInfo(Router r) {
+        final HexDigest id = r.getIdentityHash();
+        return new RelayInfo(id == null ? null : id.toString().toUpperCase(Locale.ROOT), r.getNickname(), r.getCountryCode());
+    }
+
+    private CircuitInfo.State getInfoState() {
+        switch(status.getState()) {
+        case OPEN:
+            return isMarkedForClose() ? CircuitInfo.State.CLOSING : CircuitInfo.State.OPEN;
+        case FAILED:
+            return CircuitInfo.State.FAILED;
+        case DESTROYED:
+            return CircuitInfo.State.CLOSED;
+        default:
+            return CircuitInfo.State.BUILDING;
+        }
+    }
 
     public String toString() {
         return "  Circuit ("+ getCircuitTypeLabel() + ") id="+ Integer.toHexString(getCircuitId()) +" state=" + status.getStateAsString() +" "+ pathToString();

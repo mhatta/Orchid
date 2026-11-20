@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeoutException;
 
+import com.subgraph.orchid.CircuitInfo;
 import com.subgraph.orchid.ExitCircuit;
 import com.subgraph.orchid.Router;
 import com.subgraph.orchid.Stream;
@@ -126,6 +127,16 @@ public class ExitCircuitImpl extends CircuitImpl implements ExitCircuit {
 		return pathChooser.choosePathWithExit(exitRouter);
 	}
 	
+	@Override
+	protected CircuitInfo.Purpose getInfoPurpose() {
+		return CircuitInfo.Purpose.EXIT;
+	}
+
+	@Override
+	protected boolean isIsolatedForInfo() {
+		return getClaimedIsolationKey() != null;
+	}
+
 	@Override
 	protected String getCircuitTypeLabel() {
 		return "Exit";

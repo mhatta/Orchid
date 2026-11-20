@@ -54,6 +54,11 @@ public class TorInitializationTracker {
         return bootstrapState;
     }
 
+    /** The message for the current bootstrap state, as given to the listeners. */
+    public String getBootstrapMessage() {
+        return getMessageForCode(bootstrapState);
+    }
+
     public void start() {
         synchronized (stateLock) {
             bootstrapState = Tor.BOOTSTRAP_STATUS_STARTING;

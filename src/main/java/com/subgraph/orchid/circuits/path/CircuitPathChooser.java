@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Set;
 
 import com.subgraph.orchid.Directory;
+import com.subgraph.orchid.GuardInfo;
 import com.subgraph.orchid.Router;
 import com.subgraph.orchid.TorConfig;
 import com.subgraph.orchid.circuits.guards.EntryGuards;
@@ -42,6 +43,15 @@ public class CircuitPathChooser {
 		if(entryGuards != null) {
 			entryGuards.networkChanged();
 		}
+	}
+
+	/** See {@link EntryGuards#getGuardInfo()}; an empty list without entry guards. */
+	public List<GuardInfo> getEntryGuardInfo() {
+		final EntryGuards guards = entryGuards;
+		if(guards == null || !useEntryGuards) {
+			return Collections.emptyList();
+		}
+		return guards.getGuardInfo();
 	}
 
 	public void enableEntryGuards(EntryGuards entryGuards) {

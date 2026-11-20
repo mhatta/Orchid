@@ -18,6 +18,7 @@ import java.util.concurrent.locks.ReentrantLock;
 
 import com.subgraph.orchid.Circuit;
 import com.subgraph.orchid.CircuitBuildHandler;
+import com.subgraph.orchid.CircuitInfo;
 import com.subgraph.orchid.CircuitManager;
 import com.subgraph.orchid.CircuitNode;
 import com.subgraph.orchid.Connection;
@@ -25,6 +26,7 @@ import com.subgraph.orchid.ConnectionCache;
 import com.subgraph.orchid.Directory;
 import com.subgraph.orchid.DirectoryCircuit;
 import com.subgraph.orchid.ExitCircuit;
+import com.subgraph.orchid.GuardInfo;
 import com.subgraph.orchid.InternalCircuit;
 import com.subgraph.orchid.OpenFailedException;
 import com.subgraph.orchid.Router;
@@ -234,6 +236,22 @@ public class CircuitManagerImpl implements CircuitManager, DashboardRenderable {
 	 * fetched again, since the HSDirs that served them could otherwise tie
 	 * the old and the new activity together.
 	 */
+	@Override
+	public List<CircuitInfo> getCircuitInfo() {
+		final List<CircuitInfo> result = new ArrayList<CircuitInfo>();
+		for(Circuit c: getCircuitsByFilter(null)) {
+			if(c instanceof CircuitImpl) {
+				result.add(((CircuitImpl) c).getInfo());
+			}
+		}
+		return result;
+	}
+
+	@Override
+	public List<GuardInfo> getEntryGuardInfo() {
+		return pathChooser.getEntryGuardInfo();
+	}
+
 	@Override
 	public void newIdentity() {
 		int retired = 0;
