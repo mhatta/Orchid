@@ -24,7 +24,8 @@ import com.subgraph.orchid.data.HexDigest;
  * M7: a missing descriptor that a circuit waits for is downloaded at once,
  * not when 16 are missing or ten minutes have passed.
  * L14: only the requested descriptors are fetched, and a descriptor that
- * stays missing is tried less and less often.
+ * stays missing is asked for less and less often, whether or not it was
+ * requested, and however many are missing.
  */
 public class DescriptorProcessorTest {
 	private static final long SECOND = 1000;
@@ -111,13 +112,24 @@ public class DescriptorProcessorTest {
 	public void requestedDescriptorIsDownloadedAtOnce() {
 		assertEquals(3, requested());
 		time.addAndGet(5 * SECOND);
-		requestedNow.add(digest(1, 0));
+		// A router whose descriptor has never been asked for, such as a
+		// primary guard whose microdescriptor changed with the consensus.
+		downloadable.add(router(5));
+		requestedNow.add(digest(5, 0));
 		// Only the requested descriptor, not every missing one.
 		assertEquals(1, requested());
-		// Tried again 15 seconds later while still missing.
 		time.addAndGet(5 * SECOND);
 		assertEquals(0, requested());
-		time.addAndGet(11 * SECOND);
+	}
+
+	@Test
+	public void requestedDescriptorJustAskedForWaits() {
+		assertEquals(3, requested());
+		time.addAndGet(5 * SECOND);
+		// Router 1's descriptor was in the download of five seconds ago.
+		requestedNow.add(digest(1, 0));
+		assertEquals(0, requested());
+		time.addAndGet(10 * SECOND);
 		assertEquals(1, requested());
 	}
 
@@ -125,10 +137,8 @@ public class DescriptorProcessorTest {
 	public void retriesBackOff() {
 		assertEquals(3, requested());
 		requestedNow.add(digest(1, 0));
-		time.addAndGet(SECOND);
-		assertEquals(1, requested());
-		// 15, 30, 60, 120 and 240 seconds (ten minutes from the start the
-		// ordinary download takes over).
+		// 15, 30, 60, 120 and 240 seconds after each try (ten minutes from
+		// the start the ordinary download takes over).
 		long wait = 15 * SECOND;
 		for(int i = 0; i < 5; i++) {
 			time.addAndGet(wait - SECOND);
@@ -143,25 +153,24 @@ public class DescriptorProcessorTest {
 	public void newRequestIsDownloadedDespiteBackoff() {
 		assertEquals(3, requested());
 		requestedNow.add(digest(1, 0));
-		time.addAndGet(SECOND);
-		assertEquals(1, requested());
 		time.addAndGet(15 * SECOND);
 		assertEquals(1, requested());
-		// Now waiting 30 seconds for router 1; a request for router 2 goes at once.
+		// Now waiting 30 seconds for router 1; a request for a new router goes at once.
 		time.addAndGet(SECOND);
-		requestedNow.add(digest(2, 0));
-		assertEquals(2, requested());
-		// And the wait starts again at 15 seconds.
+		downloadable.add(router(7));
+		requestedNow.add(digest(7, 0));
+		assertEquals(1, requested());
+		// Router 7 is tried again after 15 seconds, router 1 only after 30.
 		time.addAndGet(15 * SECOND);
-		assertEquals(2, requested());
+		assertEquals(1, requested());
+		time.addAndGet(14 * SECOND);
+		assertEquals(1, requested());
 	}
 
 	@Test
-	public void backoffResetsWhenRequestIsSatisfied() {
+	public void backoffResetsWhenDescriptorArrives() {
 		assertEquals(3, requested());
 		requestedNow.add(digest(1, 0));
-		time.addAndGet(SECOND);
-		assertEquals(1, requested());
 		time.addAndGet(15 * SECOND);
 		assertEquals(1, requested());
 		// Router 1's descriptor arrives.
@@ -176,6 +185,23 @@ public class DescriptorProcessorTest {
 		assertEquals(1, requested());
 		time.addAndGet(15 * SECOND);
 		assertEquals(1, requested());
+	}
+
+	/* With 16 or more missing, every download used to ask for all of them again, every five seconds. */
+	@Test
+	public void manyMissingDescriptorsBackOff() {
+		for(int i = 3; i < 20; i++) {
+			downloadable.add(router(i));
+		}
+		assertEquals(20, requested());
+		time.addAndGet(5 * SECOND);
+		assertEquals(0, requested());
+		time.addAndGet(10 * SECOND);
+		assertEquals(20, requested());
+		time.addAndGet(29 * SECOND);
+		assertEquals(0, requested());
+		time.addAndGet(SECOND);
+		assertEquals(20, requested());
 	}
 
 	@Test

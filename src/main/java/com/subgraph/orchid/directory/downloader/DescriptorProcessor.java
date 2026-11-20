@@ -3,8 +3,11 @@ package com.subgraph.orchid.directory.downloader;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import com.subgraph.orchid.ConsensusDocument;
@@ -20,21 +23,25 @@ public class DescriptorProcessor {
 	private final static int MIN_DL_REQUESTS = 3;
 	private final static int MAX_CLIENT_INTERVAL_WITHOUT_REQUEST = 10 * 60 * 1000;
 	/*
-	 * A download asked for with Directory.requestDescriptorsNow() is tried
-	 * again after 15 seconds, then after twice as long each time it fails,
-	 * up to the ten minutes between ordinary downloads.
+	 * A descriptor is asked for again, if it is still missing, after 15
+	 * seconds, then after twice as long each time, up to the ten minutes
+	 * between ordinary downloads (dir-spec 5.3; Tor keeps a download
+	 * status with an exponential backoff for each descriptor too).
 	 */
-	private final static long URGENT_RETRY_INITIAL = 15 * 1000;
-	private final static long URGENT_RETRY_MAX = MAX_CLIENT_INTERVAL_WITHOUT_REQUEST;
+	private final static long RETRY_INITIAL = 15 * 1000;
+	private final static long RETRY_MAX = MAX_CLIENT_INTERVAL_WITHOUT_REQUEST;
 
 	private final TorConfig config;
 	private final Directory directory;
 	
 	private Date lastDescriptorDownload;
-	private long lastUrgentDownload = Long.MIN_VALUE;
-	private long urgentRetryInterval = URGENT_RETRY_INITIAL;
-	/* Identities whose descriptors the last urgent download asked for. */
-	private Set<HexDigest> lastUrgentIdentities = new HashSet<HexDigest>();
+
+	/* Descriptor digest -> how often it was asked for, and when it may be asked for again. */
+	private static final class Attempts {
+		int count;
+		long notBefore;
+	}
+	private final Map<HexDigest, Attempts> attempts = new HashMap<HexDigest, Attempts>();
 	
 	
 	/* Milliseconds since the epoch; replaced in tests. */
@@ -84,44 +91,46 @@ public class DescriptorProcessor {
 		return requested;
 	}
 
-	private static Set<HexDigest> identitiesOf(List<Router> routers) {
-		final Set<HexDigest> ids = new HashSet<HexDigest>();
+	/*
+	 * The missing descriptors that may be asked for now: those never asked
+	 * for, and those whose wait after the last attempt is over.  The
+	 * attempts of descriptors that are no longer missing (they arrived, or
+	 * a new consensus replaced them) are forgotten, so a descriptor that
+	 * goes missing again starts afresh.
+	 */
+	private List<Router> getEligible(List<Router> downloadables) {
+		final long now = clock.now();
+		final Set<HexDigest> missing = new HashSet<HexDigest>();
+		final List<Router> eligible = new ArrayList<Router>();
+		for(Router r: downloadables) {
+			final HexDigest d = getDescriptorDigestForRouter(r);
+			missing.add(d);
+			final Attempts a = attempts.get(d);
+			if(a == null || now >= a.notBefore) {
+				eligible.add(r);
+			}
+		}
+		for(Iterator<HexDigest> it = attempts.keySet().iterator(); it.hasNext();) {
+			if(!missing.contains(it.next())) {
+				it.remove();
+			}
+		}
+		return eligible;
+	}
+
+	private void recordAttempts(List<Router> routers) {
+		final long now = clock.now();
 		for(Router r: routers) {
-			ids.add(r.getIdentityHash());
+			final HexDigest d = getDescriptorDigestForRouter(r);
+			Attempts a = attempts.get(d);
+			if(a == null) {
+				a = new Attempts();
+				attempts.put(d, a);
+			}
+			a.count++;
+			final int doublings = Math.min(a.count - 1, 16);
+			a.notBefore = now + Math.min(RETRY_INITIAL << doublings, RETRY_MAX);
 		}
-		return ids;
-	}
-
-	/* True if some requested descriptor has not been asked for since it was requested. */
-	private boolean hasNewRequest(List<Router> requested) {
-		return !lastUrgentIdentities.containsAll(identitiesOf(requested));
-	}
-
-	private boolean isUrgentDue(List<Router> requested) {
-		if(requested.isEmpty()) {
-			return false;
-		}
-		if(lastUrgentDownload == Long.MIN_VALUE || hasNewRequest(requested)) {
-			return true;
-		}
-		return clock.now() - lastUrgentDownload >= urgentRetryInterval;
-	}
-
-	/* Called each time a download includes the requested descriptors. */
-	private void recordUrgentDownload(List<Router> requested) {
-		if(lastUrgentDownload == Long.MIN_VALUE || hasNewRequest(requested)) {
-			urgentRetryInterval = URGENT_RETRY_INITIAL;
-		} else {
-			urgentRetryInterval = Math.min(urgentRetryInterval * 2, URGENT_RETRY_MAX);
-		}
-		lastUrgentDownload = clock.now();
-		lastUrgentIdentities = identitiesOf(requested);
-	}
-
-	private void resetUrgent() {
-		lastUrgentDownload = Long.MIN_VALUE;
-		urgentRetryInterval = URGENT_RETRY_INITIAL;
-		lastUrgentIdentities = new HashSet<HexDigest>();
 	}
 
 	/*
@@ -184,29 +193,22 @@ public class DescriptorProcessor {
 		if(consensus == null || !consensus.isLive()) {
 			return Collections.emptyList();
 		}
-		final List<Router> downloadables = directory.getRoutersWithDownloadableDescriptors();
-		final List<Router> requested = getRequestedNow(downloadables);
-		if(requested.isEmpty()) {
-			resetUrgent();
-		}
+		final List<Router> downloadables = getEligible(directory.getRoutersWithDownloadableDescriptors());
 		if(canDownloadDescriptors(downloadables.size())) {
-			if(!requested.isEmpty()) {
-				recordUrgentDownload(requested);
-			}
 			lastDescriptorDownload = new Date(clock.now());
+			recordAttempts(downloadables);
 			return partitionDescriptors(downloadables);
 		}
-		if(isUrgentDue(requested)) {
+		final List<Router> requested = getRequestedNow(downloadables);
+		if(!requested.isEmpty()) {
 			/*
 			 * A descriptor a circuit is waiting for (a primary guard's):
 			 * download it now, not when 16 are missing or 10 minutes have
-			 * passed. Only the requested descriptors are fetched, and a
-			 * descriptor that stays missing is tried again after 15
-			 * seconds, then 30, 60 and so on up to 10 minutes. Each try
-			 * goes through a directory guard chosen again, so a guard that
-			 * withholds the descriptor does not keep it away.
+			 * passed.  Only the requested descriptors are fetched.  Each
+			 * try goes through a directory guard chosen again, so a guard
+			 * that withholds the descriptor does not keep it away.
 			 */
-			recordUrgentDownload(requested);
+			recordAttempts(requested);
 			return partitionDescriptors(requested);
 		}
 		return Collections.emptyList();
