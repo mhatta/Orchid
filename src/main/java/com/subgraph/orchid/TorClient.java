@@ -16,6 +16,7 @@ import com.subgraph.orchid.directory.DataDirectory;
 import com.subgraph.orchid.directory.downloader.DirectoryDownloaderImpl;
 import com.subgraph.orchid.logging.Logger;
 import com.subgraph.orchid.logging.SafeLogging;
+import com.subgraph.orchid.misc.TrafficCounter;
 import com.subgraph.orchid.sockets.OrchidSocketFactory;
 
 /**
@@ -33,6 +34,7 @@ public class TorClient {
     private final SocksPortListener socksListener;
     private final DirectoryDownloaderImpl directoryDownloader;
     private final Dashboard dashboard;
+    private final TrafficCounter trafficCounter = new TrafficCounter();
 
     private final boolean usesDataDirectory;
     private boolean isStarted = false;
@@ -52,9 +54,9 @@ public class TorClient {
             directory = Tor.createDirectory(config, customDirectoryStore);
             initializationTracker = Tor.createInitalizationTracker();
             initializationTracker.addListener(createReadyFlagInitializationListener());
-            connectionCache = Tor.createConnectionCache(config, initializationTracker);
+            connectionCache = Tor.createConnectionCache(config, initializationTracker, trafficCounter);
             directoryDownloader = Tor.createDirectoryDownloader(config, initializationTracker);
-            circuitManager = Tor.createCircuitManager(config, directoryDownloader, directory, connectionCache, initializationTracker);
+            circuitManager = Tor.createCircuitManager(config, directoryDownloader, directory, connectionCache, initializationTracker, trafficCounter);
             socksListener = Tor.createSocksPortListener(config, circuitManager);
             readyLatch = new CountDownLatch(1);
             dashboard = new Dashboard();
@@ -196,6 +198,20 @@ public class TorClient {
      */
     public List<GuardInfo> getEntryGuards() {
         return circuitManager.getEntryGuardInfo();
+    }
+
+    /**
+     * How many bytes this client has sent and received since it was
+     * created: the cells exchanged with relays, and the data of the
+     * applications' streams.  See {@link TrafficInfo} for what each counter
+     * includes.  Cheap: it reads four counters and may be called from any
+     * thread, the main thread of an Android app included, for example once
+     * a second to show the bandwidth.
+     *
+     * @since 2.8.0
+     */
+    public TrafficInfo getTrafficInfo() {
+        return trafficCounter.getTrafficInfo();
     }
 
     public Directory getDirectory() {

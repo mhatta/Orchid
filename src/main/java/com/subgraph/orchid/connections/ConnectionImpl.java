@@ -39,6 +39,7 @@ import com.subgraph.orchid.crypto.TorRandom;
 import com.subgraph.orchid.dashboard.DashboardRenderable;
 import com.subgraph.orchid.dashboard.DashboardRenderer;
 import com.subgraph.orchid.logging.Logger;
+import com.subgraph.orchid.misc.TrafficCounter;
 
 /**
  * This class represents a transport link between two onion routers or
@@ -68,6 +69,8 @@ public class ConnectionImpl implements Connection, DashboardRenderable {
     private final BlockingQueue<Cell> connectionControlCells;
     private final TorInitializationTracker initializationTracker;
     private final boolean isDirectoryConnection;
+    /* Counts the bytes of the cells read from and written to the relay. */
+    private final TrafficCounter trafficCounter;
 
     /*
      * Circuit ids are 4 bytes wide (link protocol 4 and later), and the side
@@ -120,7 +123,12 @@ public class ConnectionImpl implements Connection, DashboardRenderable {
 
 
     public ConnectionImpl(TorConfig config, SSLSocket socket, Router router, TorInitializationTracker tracker, boolean isDirectoryConnection) {
+        this(config, socket, router, tracker, isDirectoryConnection, new TrafficCounter());
+    }
+
+    public ConnectionImpl(TorConfig config, SSLSocket socket, Router router, TorInitializationTracker tracker, boolean isDirectoryConnection, TrafficCounter trafficCounter) {
         this.config = config;
+        this.trafficCounter = trafficCounter;
         this.socket = socket;
         this.router = router;
         this.circuitMap = new HashMap<Integer, Circuit>();
@@ -222,8 +230,8 @@ public class ConnectionImpl implements Connection, DashboardRenderable {
         socket.setSoTimeout(0);
         socket.setKeepAlive(true);
         final ConnectionHandshake handshake = ConnectionHandshake.createHandshake(config, this, socket);
-        input = socket.getInputStream();
-        output = socket.getOutputStream();
+        input = new CountingStreams.In(socket.getInputStream(), trafficCounter);
+        output = new CountingStreams.Out(socket.getOutputStream(), trafficCounter);
         readCellsThread.start();
         handshake.runHandshake();
         handshakeComplete = true;

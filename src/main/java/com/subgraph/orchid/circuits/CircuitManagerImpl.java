@@ -47,6 +47,7 @@ import com.subgraph.orchid.dashboard.DashboardRenderable;
 import com.subgraph.orchid.dashboard.DashboardRenderer;
 import com.subgraph.orchid.data.IPv4Address;
 import com.subgraph.orchid.logging.Logger;
+import com.subgraph.orchid.misc.TrafficCounter;
 import com.subgraph.orchid.directory.downloader.DirectoryDownloaderImpl;
 
 public class CircuitManagerImpl implements CircuitManager, DashboardRenderable {
@@ -71,9 +72,15 @@ public class CircuitManagerImpl implements CircuitManager, DashboardRenderable {
 	private final CircuitCreationTask circuitCreationTask;
 	private final TorInitializationTracker initializationTracker;
 	private final CircuitPathChooser pathChooser;
+	private final TrafficCounter trafficCounter;
 
 	CircuitPathChooser getPathChooser() {
 		return pathChooser;
+	}
+
+	/** Counts the data of the streams on this manager's circuits. */
+	TrafficCounter getTrafficCounter() {
+		return trafficCounter;
 	}
 	private final HiddenServiceManager hiddenServiceManager;
 	private final ReentrantLock lock = Threading.lock("circuitManager");
@@ -81,7 +88,12 @@ public class CircuitManagerImpl implements CircuitManager, DashboardRenderable {
 	private boolean isBuilding = false;
 
 	public CircuitManagerImpl(TorConfig config, DirectoryDownloaderImpl directoryDownloader, Directory directory, ConnectionCache connectionCache, TorInitializationTracker initializationTracker) {
+		this(config, directoryDownloader, directory, connectionCache, initializationTracker, new TrafficCounter());
+	}
+
+	public CircuitManagerImpl(TorConfig config, DirectoryDownloaderImpl directoryDownloader, Directory directory, ConnectionCache connectionCache, TorInitializationTracker initializationTracker, TrafficCounter trafficCounter) {
 		this.config = config;
+		this.trafficCounter = trafficCounter;
 		this.directory = directory;
 		this.connectionCache = connectionCache;
 		this.pathChooser = CircuitPathChooser.create(config, directory);

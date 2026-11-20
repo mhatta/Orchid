@@ -22,7 +22,9 @@ public class TorOutputStream extends OutputStream {
 		if(currentOutputCell != null && currentOutputCell.cellBytesConsumed() > RelayCell.HEADER_SIZE) {
 			stream.waitForSendWindowAndDecrement();
 			stream.getCircuit().sendRelayCell(currentOutputCell);
-			bytesSent += (currentOutputCell.cellBytesConsumed() - RelayCell.HEADER_SIZE);
+			final int length = currentOutputCell.cellBytesConsumed() - RelayCell.HEADER_SIZE;
+			bytesSent += length;
+			stream.countStreamBytesWritten(length);
 		}
 
 		currentOutputCell = new RelayCellImpl(stream.getTargetNode(), stream.getCircuit().getCircuitId(),

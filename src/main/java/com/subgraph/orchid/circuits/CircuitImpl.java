@@ -29,6 +29,7 @@ import com.subgraph.orchid.data.HexDigest;
 import com.subgraph.orchid.dashboard.DashboardRenderable;
 import com.subgraph.orchid.dashboard.DashboardRenderer;
 import com.subgraph.orchid.logging.Logger;
+import com.subgraph.orchid.misc.TrafficCounter;
 
 /**
  * This class represents an established circuit through the Tor network.
@@ -63,6 +64,11 @@ public abstract class CircuitImpl implements Circuit, DashboardRenderable {
     private final CircuitStatus status;
 
     private CircuitIO io;
+
+    /** The traffic counter of the circuit manager, or null in tests without one. */
+    TrafficCounter getTrafficCounter() {
+        return (circuitManager == null) ? null : circuitManager.getTrafficCounter();
+    }
 
     /** The path chooser of the circuit manager, or null in tests without one. */
     CircuitPathChooser getPathChooser() {

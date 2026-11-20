@@ -17,6 +17,7 @@ import com.subgraph.orchid.dashboard.DashboardRenderable;
 import com.subgraph.orchid.dashboard.DashboardRenderer;
 import com.subgraph.orchid.logging.Logger;
 import com.subgraph.orchid.logging.SafeLogging;
+import com.subgraph.orchid.misc.TrafficCounter;
 
 public class StreamImpl implements Stream, DashboardRenderable {
     private static final Logger logger = Logger.getInstance(StreamImpl.class);
@@ -46,7 +47,21 @@ public class StreamImpl implements Stream, DashboardRenderable {
     /* For log messages: "[Directory]", or the exit target as SafeLogging allows. */
     private volatile String streamTarget = "";
 
+    /*
+     * Counts the data of the stream, unless it is a directory stream: those
+     * are Orchid's own requests, not the applications' traffic.  Null in
+     * tests without a circuit manager.
+     */
+    private final TrafficCounter trafficCounter;
+    private volatile boolean isDirectoryStream;
+
     StreamImpl(CircuitImpl circuit, CircuitNode targetNode, int streamId, boolean autoclose) {
+        this(circuit, targetNode, streamId, autoclose, circuit.getTrafficCounter());
+    }
+
+    /* The counter is given explicitly in tests. */
+    StreamImpl(CircuitImpl circuit, CircuitNode targetNode, int streamId, boolean autoclose, TrafficCounter trafficCounter) {
+        this.trafficCounter = trafficCounter;
         this.circuit = circuit;
         this.targetNode = targetNode;
         this.streamId = streamId;
@@ -98,6 +113,9 @@ public class StreamImpl implements Stream, DashboardRenderable {
                     return false;
                 }
                 deliverWindow--;
+            }
+            if(cell.getRelayCommand() == RelayCell.RELAY_DATA) {
+                countStreamBytesRead(cell.cellBytesRemaining());
             }
             inputStream.addInputCell(cell);
             considerSendingSendme();
@@ -157,7 +175,26 @@ public class StreamImpl implements Stream, DashboardRenderable {
         }
     }
 
+    /* Called before BEGIN_DIR is sent, so no data of the stream is counted. */
+    void markDirectoryStream() {
+        isDirectoryStream = true;
+    }
+
+    private void countStreamBytesRead(int n) {
+        if(trafficCounter != null && !isDirectoryStream) {
+            trafficCounter.addStreamBytesRead(n);
+        }
+    }
+
+    /* Called by the output stream for each DATA cell sent. */
+    void countStreamBytesWritten(int n) {
+        if(trafficCounter != null && !isDirectoryStream) {
+            trafficCounter.addStreamBytesWritten(n);
+        }
+    }
+
     public void openDirectory(long timeout) throws InterruptedException, TimeoutException, StreamConnectFailedException {
+        markDirectoryStream();
         streamTarget = "[Directory]";
         final RelayCell cell = new RelayCellImpl(circuit.getFinalCircuitNode(), circuit.getCircuitId(), streamId, RelayCell.RELAY_BEGIN_DIR);
         circuit.sendRelayCellToFinalNode(cell);

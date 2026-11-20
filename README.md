@@ -156,6 +156,26 @@ itself; with Maven, add an `<exclusion>` for `org.bitcoinj:orchid`.
 
 The Orchid Tor client exposes a SocketFactory that can be used within a JVM application. The Android sample in [samples/android](samples/android) shows one way to use it, and [this Stack Overflow discussion](https://stackoverflow.com/questions/29171643/java-tor-lib-how-to-setup-orchid-tor-lib-with-java) has more examples.
 
+### Traffic counters
+
+`TorClient#getTrafficInfo()` returns how many bytes the client has sent and
+received since it was created, for a data usage or bandwidth display:
+
+```java
+TrafficInfo t = client.getTrafficInfo();
+t.getBytesRead();          // cells received from relays
+t.getBytesWritten();       // cells sent to relays
+t.getStreamBytesRead();    // data of the applications' streams
+t.getStreamBytesWritten();
+```
+
+The first pair counts everything Orchid exchanges with relays, directory
+downloads and circuit building included, but not the TLS and TCP/IP
+overhead.  The second counts only the data of streams opened through the
+SOCKS or HTTP CONNECT port, the socket factory or `openExitStreamTo()`.
+The counters only grow; for a rate, take two snapshots and divide the
+difference by the time between them.
+
 ## Using Orchid on Android
 
 Orchid targets Android 7.0 (API level 24) and later as a library; Android

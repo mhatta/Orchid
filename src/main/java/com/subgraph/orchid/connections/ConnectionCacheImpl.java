@@ -31,6 +31,7 @@ import com.subgraph.orchid.circuits.TorInitializationTracker;
 import com.subgraph.orchid.dashboard.DashboardRenderable;
 import com.subgraph.orchid.dashboard.DashboardRenderer;
 import com.subgraph.orchid.logging.Logger;
+import com.subgraph.orchid.misc.TrafficCounter;
 
 public class ConnectionCacheImpl implements ConnectionCache, DashboardRenderable {
     private static final Logger logger = Logger.getInstance(ConnectionCacheImpl.class);
@@ -47,7 +48,7 @@ public class ConnectionCacheImpl implements ConnectionCache, DashboardRenderable
 
         public ConnectionImpl call() throws Exception {
             final SSLSocket socket = factory.createSocket();
-            final ConnectionImpl conn = new ConnectionImpl(config, socket, router, initializationTracker, isDirectoryConnection);
+            final ConnectionImpl conn = new ConnectionImpl(config, socket, router, initializationTracker, isDirectoryConnection, trafficCounter);
             pendingConnections.add(conn);
             try {
                 if(isClosed) {
@@ -84,11 +85,17 @@ public class ConnectionCacheImpl implements ConnectionCache, DashboardRenderable
 
     private final TorConfig config;
     private final TorInitializationTracker initializationTracker;
+    private final TrafficCounter trafficCounter;
     private volatile boolean isClosed;
 
 
     public ConnectionCacheImpl(TorConfig config, TorInitializationTracker tracker) {
+        this(config, tracker, new TrafficCounter());
+    }
+
+    public ConnectionCacheImpl(TorConfig config, TorInitializationTracker tracker, TrafficCounter trafficCounter) {
         this.config = config;
+        this.trafficCounter = trafficCounter;
         this.initializationTracker = tracker;
         scheduledExecutor.scheduleAtFixedRate(new CloseIdleConnectionCheckTask(), 5000, 5000, TimeUnit.MILLISECONDS);
     }

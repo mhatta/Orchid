@@ -9,6 +9,7 @@ import com.subgraph.orchid.connections.ConnectionCacheImpl;
 import com.subgraph.orchid.directory.DirectoryImpl;
 import com.subgraph.orchid.directory.downloader.DirectoryDownloaderImpl;
 import com.subgraph.orchid.logging.Logger;
+import com.subgraph.orchid.misc.TrafficCounter;
 import com.subgraph.orchid.socks.SocksPortListenerImpl;
 
 /**
@@ -109,6 +110,15 @@ public class Tor {
     static public ConnectionCache createConnectionCache(TorConfig config, TorInitializationTracker tracker) {
         return new ConnectionCacheImpl(config, tracker);
     }
+
+    /**
+     * Like {@link #createConnectionCache(TorConfig, TorInitializationTracker)},
+     * counting the bytes sent to and received from relays in
+     * <code>trafficCounter</code>.
+     */
+    static public ConnectionCache createConnectionCache(TorConfig config, TorInitializationTracker tracker, TrafficCounter trafficCounter) {
+        return new ConnectionCacheImpl(config, tracker, trafficCounter);
+    }
     /**
      * Create and return a new <code>CircuitManager</code> instance.
      * 
@@ -117,6 +127,14 @@ public class Tor {
      */
     static public CircuitManager createCircuitManager(TorConfig config, DirectoryDownloaderImpl directoryDownloader, Directory directory, ConnectionCache connectionCache, TorInitializationTracker tracker) {
         return new CircuitManagerImpl(config, directoryDownloader, directory, connectionCache, tracker);
+    }
+
+    /**
+     * Like {@link #createCircuitManager(TorConfig, DirectoryDownloaderImpl, Directory, ConnectionCache, TorInitializationTracker)},
+     * counting the data of the streams in <code>trafficCounter</code>.
+     */
+    static public CircuitManager createCircuitManager(TorConfig config, DirectoryDownloaderImpl directoryDownloader, Directory directory, ConnectionCache connectionCache, TorInitializationTracker tracker, TrafficCounter trafficCounter) {
+        return new CircuitManagerImpl(config, directoryDownloader, directory, connectionCache, tracker, trafficCounter);
     }
 
     /**
