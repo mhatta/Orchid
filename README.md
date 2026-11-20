@@ -1,9 +1,15 @@
 Orchid
 ======
 
+[![CI](https://github.com/mhatta/Orchid/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/mhatta/Orchid/actions/workflows/ci.yml)
+[![Android](https://github.com/mhatta/Orchid/actions/workflows/android.yml/badge.svg?branch=master)](https://github.com/mhatta/Orchid/actions/workflows/android.yml)
+[![Maven Central](https://img.shields.io/maven-central/v/org.mhatta/orchid)](https://central.sonatype.com/artifact/org.mhatta/orchid)
+[![Packaging status](https://repology.org/badge/tiny-repos/orchid.svg)](https://repology.org/project/orchid/versions)
+[![License](https://img.shields.io/badge/license-BSD--3--Clause-blue)](LICENSE)
+
 Orchid is a Tor client implementation and library written in pure Java.  Orchid's strength is that it can be used to Tor-ify Java and JVM applications with near transparency.
 
-It was written from the Tor specification documents, which are available [here](https://www.torproject.org/docs/documentation.html.en#DesignDoc).
+It was written from the Tor specification documents, which are available [here](https://spec.torproject.org/).
 
 Orchid targets Java 8 bytecode and builds and runs on current JDKs (tested with JDK 21).
 
@@ -14,8 +20,6 @@ microdescriptors without legacy TAP keys, and **version 3 onion services** (`.on
 addresses of 56 characters), implemented from [rend-spec v3](https://spec.torproject.org/rend-spec/)
 including client authorization (restricted discovery).  Version 2 onion services were
 removed from the Tor network in 2021 and are no longer supported.
-
-![Orchid](https://subgraph.com/img/orchidlogo1.png)
 
 ## How can Orchid be used?
 
@@ -64,7 +68,7 @@ To start the Orchid SOCKS5 proxy, perform the following:
 java -jar Orchid-<version>-all.jar
 ```
 
-To test Orchid, you can tell your web browser to use Orchid as a SOCKS5 proxy (the default listening port is `9150`, on the loopback address `127.0.0.1` only; `TorConfig#setSocksListenAddress()` changes the address, but do not expose the port to other hosts unless you mean to run an open proxy) - however it is important to note that Orchid + your browser is **NOT** a secure replacement for [the Tor Browser Bundle](https://www.torproject.org/projects/torbrowser.htm), which has many other enhancements beyond Tor.
+To test Orchid, you can tell your web browser to use Orchid as a SOCKS5 proxy (the default listening port is `9150`, on the loopback address `127.0.0.1` only; `TorConfig#setSocksListenAddress()` changes the address, but do not expose the port to other hosts unless you mean to run an open proxy) - however it is important to note that Orchid + your browser is **NOT** a secure replacement for [Tor Browser](https://www.torproject.org/download/), which has many other enhancements beyond Tor.
 
 For example, with Mozilla Firefox, by default, DNS lookups are not sent over a configured SOCKS5 proxy. You can change this potentially de-anonymizing default configuration by going to the URL `about:config` and setting the property `network.proxy.socks_remote_dns` to `true` (this is already done in the Tor Browser).
 
@@ -130,7 +134,7 @@ Orchid, such as `org.bitcoinj:orchid`, contain the same packages
 one if another dependency brings it in.  Gradle detects the conflict by
 itself; with Maven, add an `<exclusion>` for `org.bitcoinj:orchid`.
 
-The Orchid Tor client exposes a SocketFactory that can be used within a JVM application. More detailed documentation and code examples are coming very soon.  [This Stack Overflow discussion](https://stackoverflow.com/questions/29171643/java-tor-lib-how-to-setup-orchid-tor-lib-with-java) might be helpful for now.
+The Orchid Tor client exposes a SocketFactory that can be used within a JVM application. The Android sample in [samples/android](samples/android) shows one way to use it, and [this Stack Overflow discussion](https://stackoverflow.com/questions/29171643/java-tor-lib-how-to-setup-orchid-tor-lib-with-java) has more examples.
 
 ## Using Orchid on Android
 
@@ -179,16 +183,16 @@ is a small app that does all of the following.  An app that embeds it should:
 
 ## Authors
 
-Orchid was originally developed by [Bruce Leidl](https://github.com/brl) of [Subgraph](https://subgraph.com/).  The original web page can be found [here](https://subgraph.com/orchid/).  This README borrows heavily from there.
+Orchid was originally developed by [Bruce Leidl](https://github.com/brl) of [Subgraph](https://subgraph.com/).  The original web page can be found [here](https://subgraph.com/orchid/index.en.html).  This README borrows heavily from there.
 
-This fork is currently maintained by [Masayuki Hatta](http://about.me/mhatta) ([@mhatta](https://twitter.com/mhatta)).
+This fork is currently maintained by [Masayuki Hatta](https://about.me/mhatta) ([@mhatta.org](https://bsky.app/profile/mhatta.org) on Bluesky).
 
 ## Acknowledgements
 
 The current Orchid has been incorporated with various improvements from the following projects/people:
 
 * [bitcoinj](https://github.com/bitcoinj)
-* [geo-gs](https://github.com/geo-gs)
+* geo-gs
 * [peergos](https://github.com/peergos)
 
 ## License
