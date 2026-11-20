@@ -45,4 +45,4 @@ runs as an instrumented test, on a device or a running emulator:
 
 The test waits up to five minutes for Orchid to bootstrap.  The
 [Android workflow](../../.github/workflows/android.yml) runs it on
-emulators with API levels 24 and 35.
+emulators with API levels 24, 26, 28 and 35.
