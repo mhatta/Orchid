@@ -136,7 +136,7 @@ Releases from 2.4.0 on are on Maven Central:
 
 ```groovy
 dependencies {
-    implementation 'org.mhatta:orchid:2.7.0'
+    implementation 'org.mhatta:orchid:2.8.0'
 }
 ```
 
@@ -144,7 +144,7 @@ dependencies {
 <dependency>
   <groupId>org.mhatta</groupId>
   <artifactId>orchid</artifactId>
-  <version>2.7.0</version>
+  <version>2.8.0</version>
 </dependency>
 ```
 
