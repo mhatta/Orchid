@@ -73,7 +73,7 @@ public class SocksPortListenerImpl implements SocksPortListener {
     /**
      * Listen on <code>port</code> for HTTP CONNECT requests (Tor's
      * HTTPTunnelPort), on the same address as the SOCKS ports and with the
-     * same limits on clients: see {@link HttpTunnelClientTask}.
+     * same limits on clients: see {@code HttpTunnelClientTask}.
      */
     @Override
     public void addHttpTunnelPort(int port) {

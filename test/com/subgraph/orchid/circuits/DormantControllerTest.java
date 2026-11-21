@@ -6,6 +6,7 @@ import static org.junit.Assert.assertTrue;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.junit.Test;
@@ -29,7 +30,7 @@ public class DormantControllerTest {
 	};
 
 	private DormantController controller() {
-		config.setDormantClientTimeout(30 * MINUTE);
+		config.setDormantClientTimeout(30, TimeUnit.MINUTES);
 		final DormantController c = new DormantController(config, new DormantController.Hooks() {
 			public void enterDormant() {
 				hooks.add("enter");
@@ -57,13 +58,13 @@ public class DormantControllerTest {
 
 	@Test(expected = IllegalArgumentException.class)
 	public void testTimeoutBelowTenMinutesIsRefused() {
-		new TorConfigImpl().setDormantClientTimeout(10 * MINUTE - 1);
+		new TorConfigImpl().setDormantClientTimeout(10 * MINUTE - 1, TimeUnit.MILLISECONDS);
 	}
 
 	@Test
 	public void testTenMinutesIsAccepted() {
 		final TorConfig c = new TorConfigImpl();
-		c.setDormantClientTimeout(10 * MINUTE);
+		c.setDormantClientTimeout(10, TimeUnit.MINUTES);
 		assertEquals(10 * MINUTE, c.getDormantClientTimeout());
 	}
 
@@ -158,7 +159,7 @@ public class DormantControllerTest {
 
 	@Test
 	public void testExceptionsInHooksAndListenersAreContained() {
-		config.setDormantClientTimeout(30 * MINUTE);
+		config.setDormantClientTimeout(30, TimeUnit.MINUTES);
 		final DormantController c = new DormantController(config, new DormantController.Hooks() {
 			public void enterDormant() {
 				throw new IllegalStateException("test");

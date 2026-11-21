@@ -85,6 +85,10 @@ public class CircuitManagerImpl implements CircuitManager, DashboardRenderable {
 		return pathChooser;
 	}
 
+	TorConfig getConfig() {
+		return config;
+	}
+
 	/** Counts the data of the streams on this manager's circuits. */
 	TrafficCounter getTrafficCounter() {
 		return trafficCounter;

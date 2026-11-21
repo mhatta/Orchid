@@ -208,14 +208,15 @@ is a small app that does all of the following.  An app that embeds it should:
   shorter timeout saves battery:
 
   ```java
-  client.getConfig().setDormantClientTimeout(30 * 60 * 1000);  // 30 minutes
+  client.getConfig().setDormantClientTimeout(30, TimeUnit.MINUTES);
   ```
 
   `client.setDormant(true)` makes it dormant at once (when the user pauses
   the app, say), `setDormant(false)` wakes it up ahead of use, and a
   `DormantListener` is told of each change, for the foreground notification.
-  Circuits built in advance and never used are closed after 30 to 60
-  minutes in any case, so that the connection to the guard can close.
+  Circuits built in advance and never used are closed after half to all of
+  `CircuitIdleTimeout` (30 to 60 minutes by default) in any case, so that
+  the connection to the guard can close.
   `TorConfig#setConnectionPadding(false)` asks the guards never to pad
   (Tor's `ConnectionPadding 0`), for metered networks; padding blurs the
   connection records ISPs keep, so leave it on otherwise.

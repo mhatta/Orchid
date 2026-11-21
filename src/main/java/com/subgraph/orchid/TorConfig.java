@@ -31,6 +31,16 @@ public interface TorConfig {
 	long getCircuitStreamTimeout();
 	void setCircuitStreamTimeout(long time, TimeUnit unit);
 	
+	/**
+	 * How long a circuit built in advance may stay open without ever
+	 * carrying a stream, in milliseconds (Tor's former CircuitIdleTimeout,
+	 * now CircuitsAvailableTimeout).  Each such circuit is closed after a
+	 * random time between half of it and all of it, so that they do not all
+	 * close at once; if its port is still predicted, a fresh one is built.
+	 * One hour by default: unused circuits close after 30 to 60 minutes, and
+	 * then the connection to the guard can close too.  Before 2.8.0 the
+	 * option was ignored, and unused circuits stayed open for ever.
+	 */
 	long getCircuitIdleTimeout();
 	void setCircuitIdleTimeout(long time, TimeUnit unit);
 	
@@ -183,12 +193,13 @@ public interface TorConfig {
 	}
 
 	/**
-	 * See {@link #getDormantClientTimeout()}.
+	 * See {@link #getDormantClientTimeout()}, which returns milliseconds;
+	 * for example <code>setDormantClientTimeout(30, TimeUnit.MINUTES)</code>.
 	 *
 	 * @throws IllegalArgumentException if it is less than {@link #MIN_DORMANT_CLIENT_TIMEOUT}.
 	 *         The default implementation throws UnsupportedOperationException.
 	 */
-	default void setDormantClientTimeout(long millis) {
+	default void setDormantClientTimeout(long time, TimeUnit unit) {
 		throw new UnsupportedOperationException("setDormantClientTimeout");
 	}
 

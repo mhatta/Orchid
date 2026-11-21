@@ -31,7 +31,7 @@ import com.subgraph.orchid.logging.Logger;
  * ({@link TorConfig#setSocksPassword(String)}), it is required here too,
  * and a client without it gets "407 Proxy Authentication Required".
  */
-public class HttpTunnelClientTask implements Runnable {
+final class HttpTunnelClientTask implements Runnable {
     private static final Logger logger = Logger.getInstance(HttpTunnelClientTask.class);
     private static final Charset LATIN1 = Charset.forName("ISO-8859-1");
     private static final Charset UTF8 = Charset.forName("UTF-8");

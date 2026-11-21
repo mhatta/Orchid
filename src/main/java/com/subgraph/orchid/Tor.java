@@ -114,9 +114,10 @@ public class Tor {
     /**
      * Like {@link #createConnectionCache(TorConfig, TorInitializationTracker)},
      * counting the bytes sent to and received from relays in
-     * <code>trafficCounter</code>.
+     * <code>trafficCounter</code>.  For TorClient only: not public, so that
+     * the internal TrafficCounter is not part of the API.
      */
-    static public ConnectionCache createConnectionCache(TorConfig config, TorInitializationTracker tracker, TrafficCounter trafficCounter) {
+    static ConnectionCache createConnectionCache(TorConfig config, TorInitializationTracker tracker, TrafficCounter trafficCounter) {
         return new ConnectionCacheImpl(config, tracker, trafficCounter);
     }
     /**
@@ -131,9 +132,10 @@ public class Tor {
 
     /**
      * Like {@link #createCircuitManager(TorConfig, DirectoryDownloaderImpl, Directory, ConnectionCache, TorInitializationTracker)},
-     * counting the data of the streams in <code>trafficCounter</code>.
+     * counting the data of the streams in <code>trafficCounter</code>.  For
+     * TorClient only, as above.
      */
-    static public CircuitManager createCircuitManager(TorConfig config, DirectoryDownloaderImpl directoryDownloader, Directory directory, ConnectionCache connectionCache, TorInitializationTracker tracker, TrafficCounter trafficCounter) {
+    static CircuitManager createCircuitManager(TorConfig config, DirectoryDownloaderImpl directoryDownloader, Directory directory, ConnectionCache connectionCache, TorInitializationTracker tracker, TrafficCounter trafficCounter) {
         return new CircuitManagerImpl(config, directoryDownloader, directory, connectionCache, tracker, trafficCounter);
     }
 

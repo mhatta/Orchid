@@ -133,6 +133,22 @@ public class CircuitDormancyTest {
 	}
 
 	@Test
+	public void testUnusedLifetimeFollowsCircuitIdleTimeout() {
+		final TorConfig config = new TorConfigImpl();
+		config.setUseEntryGuards(false);
+		config.setCircuitIdleTimeout(10, java.util.concurrent.TimeUnit.MINUTES);
+		final CircuitManagerImpl cm = manager(config, new DirectoryDownloaderImpl(config, null));
+		for(int i = 0; i < 50; i++) {
+			final long lifetime = new ExitCircuitImpl(cm, (Router) null).getUnusedLifetime();
+			assertTrue(lifetime >= 5 * 60 * 1000);
+			assertTrue(lifetime < 10 * 60 * 1000);
+		}
+		// A timeout too short to halve still gives a positive lifetime.
+		assertTrue(CircuitImpl.chooseUnusedLifetime(1) >= 1);
+		assertTrue(CircuitImpl.chooseUnusedLifetime(0) >= 1);
+	}
+
+	@Test
 	public void testUnusedLifetimeIsBetween30And60Minutes() {
 		for(int i = 0; i < 50; i++) {
 			final ExitCircuitImpl c = new ExitCircuitImpl(null, (Router) null);

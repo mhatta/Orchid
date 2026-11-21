@@ -68,7 +68,8 @@ public abstract class CircuitImpl implements Circuit, DashboardRenderable {
 
     /*
      * A circuit built in advance and never used is closed after a random
-     * time between 30 and 60 minutes, as Tor closes unused circuits
+     * time between half of CircuitIdleTimeout and all of it (30 to 60
+     * minutes by default), as Tor closes unused circuits
      * (CircuitsAvailableTimeout, formerly CircuitIdleTimeout).  Without it
      * they stayed open for ever, and so did the connection to the guard,
      * which pads a quiet connection every few seconds: a device's radio was
@@ -76,8 +77,13 @@ public abstract class CircuitImpl implements Circuit, DashboardRenderable {
      * creation task builds a fresh one.  Random, so that the circuits do
      * not all close at once.
      */
-    final static long MIN_UNUSED_LIFETIME = 30 * 60 * 1000;
-    private final long unusedLifetime = MIN_UNUSED_LIFETIME + new TorRandom().nextLong(MIN_UNUSED_LIFETIME);
+    final static long DEFAULT_CIRCUIT_IDLE_TIMEOUT = 60 * 60 * 1000;
+    private final long unusedLifetime;
+
+    static long chooseUnusedLifetime(long circuitIdleTimeout) {
+        final long half = Math.max(1, circuitIdleTimeout / 2);
+        return half + new TorRandom().nextLong(half);
+    }
 
     /** Whether the circuit is open, has never carried a stream and has been so for longer than its unused lifetime. */
     boolean isUnusedTooLong() {
@@ -113,6 +119,8 @@ public abstract class CircuitImpl implements Circuit, DashboardRenderable {
         nodeList = new CopyOnWriteArrayList<CircuitNode>();
         this.circuitManager = circuitManager;
         this.prechosenPath = prechosenPath;
+        this.unusedLifetime = chooseUnusedLifetime((circuitManager == null)
+                ? DEFAULT_CIRCUIT_IDLE_TIMEOUT : circuitManager.getConfig().getCircuitIdleTimeout());
         status = new CircuitStatus();
     }
 

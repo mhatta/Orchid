@@ -359,7 +359,8 @@ public class TorConfigImpl implements TorConfig {
     }
 
     @Override
-    public void setDormantClientTimeout(long millis) {
+    public void setDormantClientTimeout(long time, TimeUnit unit) {
+        final long millis = toMS(time, unit);
         if(millis < MIN_DORMANT_CLIENT_TIMEOUT) {
             throw new IllegalArgumentException("DormantClientTimeout must be at least 10 minutes: "+ millis +" ms");
         }
