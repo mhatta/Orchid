@@ -21,6 +21,15 @@ addresses of 56 characters), implemented from [rend-spec v3](https://spec.torpro
 including client authorization (restricted discovery).  Version 2 onion services were
 removed from the Tor network in 2021 and are no longer supported.
 
+Orchid does not yet speak some newer parts of the protocol that Tor and Arti
+use: the ntor v3 handshake with congestion control
+([proposal 324](https://spec.torproject.org/proposals/324-rtt-congestion-control.html)),
+Counter Galois Onion relay encryption, the circuit padding of onion service
+circuits, and pluggable transports other than plain bridges.  Relays and
+network observers can therefore tell an Orchid client from a Tor client, and
+there are far fewer Orchid users to blend in with: the anonymity set is
+smaller than Tor's.  Use Tor Browser where that matters.
+
 ## How can Orchid be used?
 
 Orchid can be used as a standalone client where [the canonical Tor](https://www.torproject.org/) would otherwise be used.  Orchid acts as a SOCKS5 proxy.
@@ -136,7 +145,7 @@ Releases from 2.4.0 on are on Maven Central:
 
 ```groovy
 dependencies {
-    implementation 'org.mhatta:orchid:2.8.0'
+    implementation 'org.mhatta:orchid:2.8.1'
 }
 ```
 
@@ -144,7 +153,7 @@ dependencies {
 <dependency>
   <groupId>org.mhatta</groupId>
   <artifactId>orchid</artifactId>
-  <version>2.8.0</version>
+  <version>2.8.1</version>
 </dependency>
 ```
 
@@ -197,7 +206,10 @@ is a small app that does all of the following.  An app that embeds it should:
   `start()` refuses them (see below).
 * **Send the log to logcat** with `Logger.setHandler()`; the javadoc of
   `LogHandler` has an example.  `SafeLogging` (on by default) keeps stream
-  destinations out of the log.
+  destinations out of the log, and the addresses of the guards and bridges
+  Orchid connects to (and of the device, which Android's socket errors
+  name).  Logcat can still be read with adb and in bug reports, so a
+  release build should forward warnings at most.
 * **Report network changes** with `client.notifyNetworkChanged()`, from a
   `ConnectivityManager.NetworkCallback`.
 * **Let Orchid rest when unused.**  After `DormantClientTimeout` without a
