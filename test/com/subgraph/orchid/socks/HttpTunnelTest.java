@@ -245,7 +245,7 @@ public class HttpTunnelTest {
 			s.getOutputStream().write("CONNECT example.com:443 HTTP/1.1\r\n\r\n".getBytes("US-ASCII"));
 			final InputStream in = s.getInputStream();
 			assertEquals("HTTP/1.0 407 Proxy Authentication Required", readLine(in));
-			assertEquals("Proxy-Authenticate: Basic realm=\"Orchid\"", readLine(in));
+			assertEquals("Proxy-Authenticate: Basic realm=\"proxy\"", readLine(in));
 		} finally {
 			s.close();
 		}

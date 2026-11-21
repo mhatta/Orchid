@@ -1,6 +1,7 @@
 package com.subgraph.orchid.socks;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -187,6 +188,8 @@ public class SocksHandshakeTest {
 		s.getOutputStream().write("CONNECT example.com:443 HTTP/1.1\r\nHost: example.com:443\r\n\r\n".getBytes("US-ASCII"));
 		final String response = new String(readToEof(s.getInputStream()), "US-ASCII");
 		assertTrue(response, response.startsWith("HTTP/1.0 501 "));
-		assertTrue(response, response.contains("SOCKS"));
+		// Nothing a probing program could use to tell that Tor (or SOCKS) listens here.
+		assertFalse(response, response.contains("Tor"));
+		assertFalse(response, response.contains("SOCKS"));
 	}
 }

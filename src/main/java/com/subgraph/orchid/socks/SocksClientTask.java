@@ -155,12 +155,14 @@ public class SocksClientTask implements Runnable {
 
     /*
      * Someone pointed a web browser (or another HTTP client) at the SOCKS
-     * port.  Tell them, instead of throwing and leaving the socket open.
+     * port.  Answer, instead of throwing and leaving the socket open, but
+     * with a plain status: Tor's "Tor is not an HTTP Proxy" would tell any
+     * program that probes local ports (on Android, every app) that a Tor
+     * client runs here.
      */
     private void sendHttpPage() {
-        final String body = "This is a SOCKS proxy, not an HTTP proxy.\r\n" +
-                "Configure your application to use it as a SOCKS5 proxy.\r\n";
-        final String response = "HTTP/1.0 501 Tor is not an HTTP Proxy\r\n" +
+        final String body = "Not Implemented\r\n";
+        final String response = "HTTP/1.0 501 Not Implemented\r\n" +
                 "Content-Type: text/plain; charset=us-ascii\r\n" +
                 "Content-Length: "+ body.length() + "\r\n" +
                 "Connection: close\r\n\r\n" + body;

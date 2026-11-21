@@ -158,7 +158,7 @@ final class HttpTunnelClientTask implements Runnable {
         }
         if(!requestLine[0].equals("CONNECT")) {
             throw new HttpError(405, "Method Not Allowed",
-                    "This is an HTTP tunnel proxy: only CONNECT is supported.  For http:// URLs, use a SOCKS port.");
+                    "Only CONNECT is supported.");
         }
         final String authority = requestLine[1];
         if(authority.startsWith("[")) {
@@ -233,7 +233,7 @@ final class HttpTunnelClientTask implements Runnable {
         final StringBuilder sb = new StringBuilder();
         sb.append("HTTP/1.0 ").append(e.status).append(' ').append(e.reason).append("\r\n");
         if(e.status == 407) {
-            sb.append("Proxy-Authenticate: Basic realm=\"Orchid\"\r\n");
+            sb.append("Proxy-Authenticate: Basic realm=\"proxy\"\r\n");
         }
         sb.append("Content-Type: text/plain; charset=us-ascii\r\n");
         sb.append("Content-Length: ").append(body.length()).append("\r\n");
