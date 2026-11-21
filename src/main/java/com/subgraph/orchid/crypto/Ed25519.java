@@ -23,7 +23,12 @@ import com.subgraph.orchid.TorException;
  * ever feeds public data (public keys, signatures, blinding factors derived
  * from public values) through these routines; no long term secret key is ever
  * handled by this class.  Orchid's existing {@link Curve25519} implementation
- * is used for the X25519 operations that do involve ephemeral secrets.
+ * (constant time, see {@link X25519}) is used for the X25519 operations that
+ * do involve ephemeral secrets.
+ *
+ * <p>Do not add signing, or any other operation on an Ed25519 secret key
+ * (hosting an onion service, link or client authentication), to this class:
+ * such code needs a constant-time implementation, as {@link X25519} is.
  */
 public final class Ed25519 {
 
