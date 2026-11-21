@@ -178,6 +178,10 @@ public class ConnectionSocketFactoryTest {
 	}
 
 	private void startRelayLikeServer(String... protocols) throws Exception {
+		startRelayLikeServer(1, protocols);
+	}
+
+	private void startRelayLikeServer(final int connections, String... protocols) throws Exception {
 		final KeyStore ks = KeyStore.getInstance("PKCS12");
 		ks.load(new ByteArrayInputStream(java.util.Base64.getDecoder().decode(RELAY_KEYSTORE_BASE64)), "orchid".toCharArray());
 		final KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
@@ -190,12 +194,14 @@ public class ConnectionSocketFactoryTest {
 		final Thread t = new Thread(new Runnable() {
 			public void run() {
 				try {
-					final SSLSocket s = (SSLSocket) server.accept();
-					s.startHandshake();
-					s.getOutputStream().write(1);
-					s.getOutputStream().flush();
-					s.getInputStream().read();
-					s.close();
+					for(int i = 0; i < connections; i++) {
+						final SSLSocket s = (SSLSocket) server.accept();
+						s.startHandshake();
+						s.getOutputStream().write(1);
+						s.getOutputStream().flush();
+						s.getInputStream().read();
+						s.close();
+					}
 				} catch(Exception e) {
 					failure.set(e);
 				}
@@ -206,7 +212,11 @@ public class ConnectionSocketFactoryTest {
 	}
 
 	private SSLSocket handshake() throws IOException {
-		final SSLSocket s = new ConnectionSocketFactory().createSocket();
+		return handshake(new ConnectionSocketFactory());
+	}
+
+	private SSLSocket handshake(ConnectionSocketFactory factory) throws IOException {
+		final SSLSocket s = factory.createSocket();
 		s.connect(new InetSocketAddress(InetAddress.getLoopbackAddress(), server.getLocalPort()), 5000);
 		s.setSoTimeout(5000);
 		s.startHandshake();
@@ -239,5 +249,45 @@ public class ConnectionSocketFactoryTest {
 		} finally {
 			s.close();
 		}
+	}
+	/*
+	 * A second connection to the same relay, for instance after the device
+	 * moved to another network (TorClient.notifyNetworkChanged()), must not
+	 * resume the TLS session of the first: a session ID or ticket would let
+	 * the relay (or a bridge) link the two connections, and so the client's
+	 * old and new IP addresses.  The server here keeps sessions, as an
+	 * ordinary web server in front of a WebTunnel bridge would.
+	 */
+	private void assertNotResumed(String protocol) throws Exception {
+		startRelayLikeServer(2, protocol);
+		final ConnectionSocketFactory factory = new ConnectionSocketFactory();
+		final SSLSocket first = handshake(factory);
+		final byte[] firstId = first.getSession().getId();
+		final long firstCreated = first.getSession().getCreationTime();
+		first.getOutputStream().write(2);
+		first.close();
+		Thread.sleep(20);
+		final SSLSocket second = handshake(factory);
+		try {
+			assertEquals(protocol, second.getSession().getProtocol());
+			assertFalse("the second connection resumed the first session",
+					firstId.length > 0 && Arrays.equals(firstId, second.getSession().getId()));
+			assertFalse("the second connection resumed the first session",
+					firstCreated == second.getSession().getCreationTime());
+		} finally {
+			second.getOutputStream().write(2);
+			second.close();
+		}
+	}
+
+	@Test(timeout = 20000)
+	public void testNoSessionResumptionTls12() throws Exception {
+		assertNotResumed("TLSv1.2");
+	}
+
+	@Test(timeout = 20000)
+	public void testNoSessionResumptionTls13() throws Exception {
+		Assume.assumeTrue(Arrays.asList(SSLContext.getDefault().getSupportedSSLParameters().getProtocols()).contains("TLSv1.3"));
+		assertNotResumed("TLSv1.3");
 	}
 }

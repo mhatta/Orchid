@@ -7,6 +7,7 @@ import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSessionContext;
 import javax.net.ssl.SSLSocket;
 import javax.net.ssl.SSLSocketFactory;
 import javax.net.ssl.TrustManager;
@@ -110,7 +111,17 @@ public class ConnectionSocketFactory {
 		}
 	};
 	
-	private static SSLContext createSSLContext() {
+	/*
+	 * A new SSLContext for every connection to a relay.  An SSLContext
+	 * keeps the sessions of its connections and offers them again (a TLS
+	 * 1.2 session ID, a TLS 1.3 ticket) to the same host and port, so a
+	 * shared one let a relay or a bridge link a connection to an earlier
+	 * one: after TorClient.notifyNetworkChanged(), the client's old and
+	 * new IP addresses.  Tor does not resume link sessions either.  Each
+	 * context is also told to keep nothing, in case a provider shares its
+	 * cache between contexts.
+	 */
+	static SSLContext createSSLContext() {
 		/*
 		 * Orchid used to set sun.security.ssl.allowUnsafeRenegotiation=true
 		 * here, for the renegotiation based link handshakes of link protocols
@@ -121,6 +132,12 @@ public class ConnectionSocketFactory {
 		try {
 			final SSLContext sslContext = SSLContext.getInstance("TLS");
 			sslContext.init(null, NULL_TRUST, null);
+			final SSLSessionContext sessions = sslContext.getClientSessionContext();
+			if(sessions != null) {
+				// 0 would mean "no limit" for both
+				sessions.setSessionCacheSize(1);
+				sessions.setSessionTimeout(1);
+			}
 			return sslContext;
 		} catch (NoSuchAlgorithmException e) {
 			throw new TorException(e);
@@ -129,17 +146,24 @@ public class ConnectionSocketFactory {
 		}
 	}
 	
+	/* The factory the suites and versions were chosen from, or the one used for every socket (tests). */
 	private final SSLSocketFactory socketFactory;
+	private final boolean newContextPerSocket;
 	private final String[] cipherSuites;
 	private final String[] protocols;
 	
 	ConnectionSocketFactory() {
-		this(createSSLContext().getSocketFactory());
+		this(createSSLContext().getSocketFactory(), true);
 	}
 
 	/* For tests: any SSLSocketFactory, e.g. one that behaves like Conscrypt. */
 	ConnectionSocketFactory(SSLSocketFactory socketFactory) {
+		this(socketFactory, false);
+	}
+
+	private ConnectionSocketFactory(SSLSocketFactory socketFactory, boolean newContextPerSocket) {
 		this.socketFactory = socketFactory;
+		this.newContextPerSocket = newContextPerSocket;
 		this.cipherSuites = chooseCipherSuites(socketFactory.getSupportedCipherSuites());
 		this.protocols = chooseProtocols(probeSupportedProtocols(socketFactory));
 	}
@@ -163,7 +187,8 @@ public class ConnectionSocketFactory {
 	
 	SSLSocket createSocket() {
 		try {
-			final SSLSocket socket = (SSLSocket) socketFactory.createSocket();
+			final SSLSocketFactory factory = newContextPerSocket ? createSSLContext().getSocketFactory() : socketFactory;
+			final SSLSocket socket = (SSLSocket) factory.createSocket();
 			socket.setEnabledProtocols(protocols);
 			socket.setEnabledCipherSuites(cipherSuites);
 			socket.setUseClientMode(true);
