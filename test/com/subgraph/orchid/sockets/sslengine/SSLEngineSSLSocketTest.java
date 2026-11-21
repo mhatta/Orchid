@@ -516,6 +516,8 @@ public class SSLEngineSSLSocketTest {
 				fail("reported as a certificate problem: "+ e);
 			} catch(javax.net.ssl.SSLHandshakeException e) {
 				assertTrue(e.getMessage(), e.getMessage().contains("did not complete"));
+				// The server read the ClientHello and hung up without a word.
+				assertTrue(e.getMessage(), e.getMessage().contains("before the server sent anything"));
 			} catch(IOException e) {
 				// a reset is a fine answer too
 			}

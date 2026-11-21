@@ -48,13 +48,33 @@ public class SSLEngineManager {
     private final ReentrantLock writeLock = new ReentrantLock();
 
     /* guarded by readLock */
-    private final ByteBuffer peerApplicationBuffer;
-    private final ByteBuffer peerNetworkBuffer;
+    /*
+     * Not final: the handshake enlarges a buffer when the engine says it is
+     * too small (BUFFER_OVERFLOW, or BUFFER_UNDERFLOW with the buffer full).
+     * Older Android engines size their buffers from a session that the
+     * handshake has not yet negotiated.
+     */
+    private ByteBuffer peerApplicationBuffer;
+    private ByteBuffer peerNetworkBuffer;
     private boolean inputEOF = false;
 
     /* guarded by writeLock */
     private final ByteBuffer myApplicationBuffer;
-    private final ByteBuffer myNetworkBuffer;
+    private ByteBuffer myNetworkBuffer;
+
+    /* The largest buffer the handshake grows to: 1 MiB, far above a TLS record. */
+    private static final int MAX_BUFFER_SIZE = 1 << 20;
+
+    /*
+     * Why runHandshake() stopped, and how many bytes the server had sent by
+     * then, for the message of a handshake that did not complete: whether
+     * the connection ended before the server answered at all, or the engine
+     * stopped for some other reason, tells the server's or the exit relay's
+     * refusal apart from a problem of the engine.  Guarded by readLock.
+     */
+    private String handshakeStopReason;
+    private long handshakeBytesRead;
+    private static final String END_OF_STREAM = "end of stream";
     private final ByteBuffer emptyBuffer = ByteBuffer.allocate(0);
 
     private final HandshakeCallbackHandler handshakeCallback;
@@ -185,10 +205,51 @@ public class SSLEngineManager {
                 return;
             }
         }
-        final String why = engine.isInboundDone()
-                ? "the server closed the TLS connection"
-                : "the connection was closed (handshake status "+ hs +")";
-        throw new SSLHandshakeException("TLS handshake did not complete: "+ why);
+        throw new SSLHandshakeException("TLS handshake did not complete: "+ describeIncompleteHandshake(hs));
+    }
+
+    private String describeIncompleteHandshake(HandshakeStatus hs) {
+        if(engine.isInboundDone()) {
+            return "the server closed the TLS connection";
+        }
+        if(END_OF_STREAM.equals(handshakeStopReason)) {
+            if(handshakeBytesRead == 0) {
+                return "the connection ended before the server sent anything (the server or the exit relay closed it)";
+            }
+            return "the connection ended after "+ handshakeBytesRead +" bytes from the server (handshake status "+ hs +")";
+        }
+        return ((handshakeStopReason != null) ? handshakeStopReason : "the handshake stopped")
+                +" (handshake status "+ hs +", "+ handshakeBytesRead +" bytes from the server)";
+    }
+
+    /*
+     * A buffer of at least wanted bytes (and at least twice the old one),
+     * holding what the old one held.
+     */
+    private static ByteBuffer enlarge(ByteBuffer old, int wanted, String what) throws SSLException {
+        final int size = Math.max(wanted, old.capacity() * 2);
+        if(old.capacity() >= MAX_BUFFER_SIZE) {
+            throw new SSLException("TLS engine needs a "+ what +" buffer larger than "+ MAX_BUFFER_SIZE +" bytes");
+        }
+        final ByteBuffer b = createBuffer(Math.min(size, MAX_BUFFER_SIZE));
+        old.flip();
+        b.put(old);
+        logger.debug("Enlarged the "+ what +" buffer from "+ old.capacity() +" to "+ b.capacity() +" bytes");
+        return b;
+    }
+
+    /* Read for the handshake, recording what happened. */
+    private int readForHandshake() throws IOException {
+        if(!peerNetworkBuffer.hasRemaining()) {
+            peerNetworkBuffer = enlarge(peerNetworkBuffer, engine.getSession().getPacketBufferSize(), "network");
+        }
+        final int n = networkReadBuffer(peerNetworkBuffer);
+        if(n < 0) {
+            handshakeStopReason = END_OF_STREAM;
+        } else {
+            handshakeBytesRead += n;
+        }
+        return n;
     }
 
     /* Called with both locks held: remember why, and close the connection. */
@@ -526,7 +587,7 @@ public class SSLEngineManager {
             logger.debug("handshakeUnwrap()");
 
             if(!engine.isInboundDone() && peerNetworkBuffer.position() == 0) {
-                    if(networkReadBuffer(peerNetworkBuffer) < 0) {
+                    if(readForHandshake() < 0) {
                             return false;
                     }
             }
@@ -538,6 +599,7 @@ public class SSLEngineManager {
             switch(result.getStatus()) {
 
             case CLOSED:
+                    handshakeStopReason = "the TLS engine closed during the handshake";
                     if(engine.isOutboundDone()) {
                             output.close();
                     }
@@ -545,11 +607,18 @@ public class SSLEngineManager {
             case OK:
                     return true;
             case BUFFER_UNDERFLOW:
-                    if(networkReadBuffer(peerNetworkBuffer) < 0) {
-                            return false;
-                    }
+                    // A record has only partly arrived: read the rest (making room if the buffer is full).
+                    return readForHandshake() >= 0;
+            case BUFFER_OVERFLOW:
+                    /*
+                     * Used to stop the handshake here, and to be reported as
+                     * a closed connection.  A handshake record carries no
+                     * application data, but some engines still ask for room.
+                     */
+                    peerApplicationBuffer = enlarge(peerApplicationBuffer, engine.getSession().getApplicationBufferSize(), "application");
                     return true;
             default:
+                    handshakeStopReason = "unwrap returned "+ result.getStatus();
                     return false;
             }
     }
@@ -574,6 +643,7 @@ public class SSLEngineManager {
 
         switch(result.getStatus()) {
         case CLOSED:
+            handshakeStopReason = "the TLS engine closed while sending";
             if(engine.isOutboundDone() && closeUnderlying) {
                 output.close();
             }
@@ -582,7 +652,15 @@ public class SSLEngineManager {
         case OK:
             return true;
 
+        case BUFFER_OVERFLOW:
+            // flush() above emptied myNetworkBuffer: if that was not enough, it is too small.
+            if(myNetworkBuffer.position() == 0) {
+                myNetworkBuffer = enlarge(myNetworkBuffer, engine.getSession().getPacketBufferSize(), "outgoing network");
+            }
+            return true;
+
         default:
+            handshakeStopReason = "wrap returned "+ result.getStatus();
             return false;
 
         }

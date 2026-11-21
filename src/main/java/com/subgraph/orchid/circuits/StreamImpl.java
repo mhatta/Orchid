@@ -90,6 +90,7 @@ public class StreamImpl implements Stream, DashboardRenderable {
         if(cell.getRelayCommand() == RelayCell.RELAY_END) {
             synchronized(waitConnectLock) {
                 relayEndReason = cell.getByte();
+                logEnd(relayEndReason, relayConnectedReceived);
                 relayEndReceived = true;
                 inputStream.addEndCell(cell);
                 waitConnectLock.notifyAll();
@@ -121,6 +122,46 @@ public class StreamImpl implements Stream, DashboardRenderable {
             considerSendingSendme();
         }
         return true;
+    }
+
+    /*
+     * An open stream that the exit relay ends for a reason other than DONE
+     * (the server closed the connection) was cut short: a reset, a timeout,
+     * a failure of the exit.  Say so, because the application only sees
+     * the end of the stream: a TLS handshake that "did not complete", or a
+     * download that stops.  A stream refused before it opened is reported
+     * by StreamConnectFailedException instead.
+     */
+    private void logEnd(int reason, boolean wasOpen) {
+        if(!wasOpen) {
+            return;
+        }
+        final String text = "Stream "+ streamTarget +" ended by the exit relay: "+ reasonName(reason) +" ("+ reason +")";
+        if(reason == RelayCell.REASON_DONE) {
+            logger.debug(text);
+        } else {
+            logger.info(text);
+        }
+    }
+
+    static String reasonName(int reason) {
+        switch(reason) {
+        case RelayCell.REASON_MISC: return "MISC";
+        case RelayCell.REASON_RESOLVEFAILED: return "RESOLVEFAILED";
+        case RelayCell.REASON_CONNECTREFUSED: return "CONNECTREFUSED";
+        case RelayCell.REASON_EXITPOLICY: return "EXITPOLICY";
+        case RelayCell.REASON_DESTROY: return "DESTROY";
+        case RelayCell.REASON_DONE: return "DONE";
+        case RelayCell.REASON_TIMEOUT: return "TIMEOUT";
+        case RelayCell.REASON_NOROUTE: return "NOROUTE";
+        case RelayCell.REASON_HIBERNATING: return "HIBERNATING";
+        case RelayCell.REASON_INTERNAL: return "INTERNAL";
+        case RelayCell.REASON_RESOURCELIMIT: return "RESOURCELIMIT";
+        case RelayCell.REASON_CONNRESET: return "CONNRESET";
+        case RelayCell.REASON_TORPROTOCOL: return "TORPROTOCOL";
+        case RelayCell.REASON_NOTDIRECTORY: return "NOTDIRECTORY";
+        default: return "unknown reason";
+        }
     }
 
     private void considerSendingSendme() {

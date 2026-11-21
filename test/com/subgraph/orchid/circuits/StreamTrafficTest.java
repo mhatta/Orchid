@@ -78,6 +78,24 @@ public class StreamTrafficTest {
 	}
 
 	@Test
+	public void testEndReasonNames() {
+		assertEquals("DONE", StreamImpl.reasonName(RelayCell.REASON_DONE));
+		assertEquals("CONNRESET", StreamImpl.reasonName(RelayCell.REASON_CONNRESET));
+		assertEquals("unknown reason", StreamImpl.reasonName(200));
+	}
+
+	@Test
+	public void testEndOfAnOpenStream() {
+		final StreamImpl s = stream(new TrafficCounter());
+		assertTrue(s.addInputCell(received(RelayCell.RELAY_CONNECTED, 8)));
+		final RelayCellImpl end = new RelayCellImpl(null, 0x80000001, STREAM_ID, RelayCell.RELAY_END);
+		end.putByte(RelayCell.REASON_CONNRESET);
+		end.setLength();
+		// Logged; the stream ends as before.
+		assertTrue(s.addInputCell(RelayCellImpl.createFromCell(null, end)));
+	}
+
+	@Test
 	public void testCircuitWithoutManagerHasNoCounter() {
 		final ExitCircuitImpl circuit = new ExitCircuitImpl(null, (Router) null);
 		assertNull(circuit.getTrafficCounter());
