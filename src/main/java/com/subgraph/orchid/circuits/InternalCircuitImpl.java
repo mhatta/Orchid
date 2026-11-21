@@ -15,6 +15,7 @@ import com.subgraph.orchid.StreamConnectFailedException;
 import com.subgraph.orchid.TorException;
 import com.subgraph.orchid.circuits.path.CircuitPathChooser;
 import com.subgraph.orchid.circuits.path.PathSelectionFailedException;
+import com.subgraph.orchid.logging.SafeLogging;
 
 public class InternalCircuitImpl extends CircuitImpl implements InternalCircuit, DirectoryCircuit, HiddenServiceCircuit {
 
@@ -69,7 +70,7 @@ public class InternalCircuitImpl extends CircuitImpl implements InternalCircuit,
 		}
 		for(CircuitNode node: getNodeList()) {
 			if(pathChooser.areRelated(node.getRouter(), target)) {
-				throw new TorException("Cannot extend circuit to "+ target.getNickname() +": it is related to "+ node.getRouter().getNickname() +", already on the circuit");
+				throw new TorException("Cannot extend circuit to "+ SafeLogging.relay(target) +": it is related to "+ SafeLogging.relay(node.getRouter()) +", already on the circuit");
 			}
 		}
 	}

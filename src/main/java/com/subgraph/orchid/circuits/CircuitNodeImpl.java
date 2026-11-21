@@ -9,6 +9,7 @@ import com.subgraph.orchid.CircuitNode;
 import com.subgraph.orchid.RelayCell;
 import com.subgraph.orchid.Router;
 import com.subgraph.orchid.TorException;
+import com.subgraph.orchid.logging.SafeLogging;
 import com.subgraph.orchid.misc.Utils;
 
 public class CircuitNodeImpl implements CircuitNode {
@@ -96,7 +97,7 @@ public class CircuitNodeImpl implements CircuitNode {
 
 	public String toString() {
 		if(router != null) {
-			return "|"+ router.getNickname() + "|";
+			return "|"+ SafeLogging.relay(router) + "|";
 		} else {
 			return "|()|";
 		}

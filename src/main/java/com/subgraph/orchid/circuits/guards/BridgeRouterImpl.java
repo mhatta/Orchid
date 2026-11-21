@@ -10,6 +10,7 @@ import com.subgraph.orchid.crypto.TorPublicKey;
 import com.subgraph.orchid.data.HexDigest;
 import com.subgraph.orchid.data.IPv4Address;
 import com.subgraph.orchid.geoip.CountryCodeService;
+import com.subgraph.orchid.logging.SafeLogging;
 
 public class BridgeRouterImpl implements BridgeRouter {
 	private final IPv4Address address;
@@ -75,8 +76,12 @@ public class BridgeRouterImpl implements BridgeRouter {
 		return true;
 	}
 
+	/*
+	 * The bridge line's address: shown to the user (who entered it), but
+	 * not written to logs while SafeLogging is on (see toString()).
+	 */
 	public String getNickname() {
-		return toString();
+		return "[Bridge "+ address + ":"+ port + "]";
 	}
 
 	public String getCountryCode() {
@@ -247,6 +252,6 @@ public class BridgeRouterImpl implements BridgeRouter {
 	}
 
 	public String toString() {
-		return "[Bridge "+ address + ":"+ port + "]";
+		return SafeLogging.isEnabled() ? "[Bridge]" : getNickname();
 	}
 }

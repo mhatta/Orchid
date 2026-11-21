@@ -39,6 +39,7 @@ import com.subgraph.orchid.crypto.TorRandom;
 import com.subgraph.orchid.dashboard.DashboardRenderable;
 import com.subgraph.orchid.dashboard.DashboardRenderer;
 import com.subgraph.orchid.logging.Logger;
+import com.subgraph.orchid.logging.SafeLogging;
 import com.subgraph.orchid.misc.TrafficCounter;
 
 /**
@@ -211,14 +212,14 @@ public class ConnectionImpl implements Connection, DashboardRenderable {
             } catch (SocketTimeoutException e) {
                 throw new ConnectionTimeoutException();
             } catch (IOException e) {
-                throw new ConnectionFailedException(e.getClass().getName() + " : "+ e.getMessage());
+                throw new ConnectionFailedException(e.getClass().getName() + " : "+ SafeLogging.addresses(e.getMessage()));
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 throw new ConnectionHandshakeException("Handshake interrupted");
             } catch (ConnectionHandshakeException e) {
                 throw e;
             } catch (ConnectionIOException e) {
-                throw new ConnectionFailedException(e.getMessage());
+                throw new ConnectionFailedException(SafeLogging.addresses(e.getMessage()));
             } catch (RuntimeException e) {
                 throw new ConnectionHandshakeException("Handshake failed: "+ e);
             } finally {
@@ -647,7 +648,7 @@ public class ConnectionImpl implements Connection, DashboardRenderable {
 
     @Override
     public String toString() {
-        return "!" + router.getNickname() + "!";
+        return "!" + SafeLogging.relay(router) + "!";
     }
 
     @Override

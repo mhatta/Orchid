@@ -19,6 +19,7 @@ import com.subgraph.orchid.circuits.cells.CellImpl;
 import com.subgraph.orchid.crypto.TorPublicKey;
 import com.subgraph.orchid.data.IPv4Address;
 import com.subgraph.orchid.logging.Logger;
+import com.subgraph.orchid.logging.SafeLogging;
 
 public abstract class ConnectionHandshake {
     private static final Logger logger = Logger.getInstance(ConnectionHandshake.class);
@@ -107,7 +108,7 @@ public abstract class ConnectionHandshake {
             final List<Integer> expected = Arrays.asList(expectedTypes);
             throw new ConnectionHandshakeException("Expecting Cell command "+ expected + " and got [ "+ c.getCommand() +" ] instead");
         } catch (ConnectionIOException e) {
-            throw new ConnectionHandshakeException("Connection exception while performing handshake "+ e);
+            throw new ConnectionHandshakeException("Connection exception while performing handshake "+ SafeLogging.addresses(String.valueOf(e)));
         }
     }
 

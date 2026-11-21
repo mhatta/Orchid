@@ -179,7 +179,7 @@ public class ConnectionCacheImpl implements ConnectionCache, DashboardRenderable
         if(isClosed) {
             throw new IllegalStateException("ConnectionCache has been closed");
         }
-        logger.debug("Get connection to "+ router.getAddress() + " "+ router.getOnionPort() + " " + router.getNickname());
+        logger.debug("Get connection to "+ router);
         while(true) {
             Future<ConnectionImpl> f = getFutureFor(router, isDirectoryConnection);
             try {

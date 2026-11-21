@@ -11,6 +11,7 @@ import com.subgraph.orchid.Tor;
 import com.subgraph.orchid.TorException;
 import com.subgraph.orchid.circuits.path.PathSelectionFailedException;
 import com.subgraph.orchid.logging.Logger;
+import com.subgraph.orchid.logging.SafeLogging;
 
 public class CircuitBuildTask implements Runnable {
     private static final Logger logger = Logger.getInstance(CircuitBuildTask.class);
@@ -73,7 +74,7 @@ public class CircuitBuildTask implements Runnable {
             if(sb.length() > 1){
                 sb.append(",");
             }
-            sb.append(r.getNickname());
+            sb.append(SafeLogging.relay(r));
         }
         sb.append("]");
         return sb.toString();
@@ -122,7 +123,7 @@ public class CircuitBuildTask implements Runnable {
         }
         if(!creationRequest.circuitBuiltForUse(firstRouter)) {
             circuit.markForClose();
-            throw new TorException("Not using circuit through guard "+ firstRouter.getNickname()
+            throw new TorException("Not using circuit through guard "+ SafeLogging.relay(firstRouter)
                     +": a primary guard may be reachable again");
         }
         creationRequest.circuitBuildCompleted(circuit);

@@ -13,6 +13,7 @@ import com.subgraph.orchid.crypto.TorPublicKey;
 import com.subgraph.orchid.data.HexDigest;
 import com.subgraph.orchid.data.IPv4Address;
 import com.subgraph.orchid.geoip.CountryCodeService;
+import com.subgraph.orchid.logging.SafeLogging;
 
 public class RouterImpl implements Router {
 	static RouterImpl createFromRouterStatus(Directory directory, RouterStatus status) {
@@ -281,6 +282,9 @@ public class RouterImpl implements Router {
 	}
 	
 	public String toString() {
+		if(SafeLogging.isEnabled()) {
+			return "Router["+ getNickname() +"]";
+		}
 		return "Router["+ getNickname() +" ("+getAddress() +":"+ getOnionPort() +")]";
 	}
 
