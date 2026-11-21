@@ -55,6 +55,7 @@ public class ConnectionCacheImpl implements ConnectionCache, DashboardRenderable
                     conn.closeSocket();
                 }
                 conn.connect();
+                conn.setPaddingWanted(isPaddingWanted());
                 return conn;
             } finally {
                 pendingConnections.remove(conn);
@@ -87,6 +88,7 @@ public class ConnectionCacheImpl implements ConnectionCache, DashboardRenderable
     private final TorInitializationTracker initializationTracker;
     private final TrafficCounter trafficCounter;
     private volatile boolean isClosed;
+    private volatile boolean isDormant;
 
 
     public ConnectionCacheImpl(TorConfig config, TorInitializationTracker tracker) {
@@ -98,6 +100,26 @@ public class ConnectionCacheImpl implements ConnectionCache, DashboardRenderable
         this.trafficCounter = trafficCounter;
         this.initializationTracker = tracker;
         scheduledExecutor.scheduleAtFixedRate(new CloseIdleConnectionCheckTask(), 5000, 5000, TimeUnit.MILLISECONDS);
+    }
+
+    /* Padding is asked for unless it is turned off or Orchid is dormant. */
+    boolean isPaddingWanted() {
+        return config.getConnectionPadding() && !isDormant;
+    }
+
+    @Override
+    public void setDormant(boolean dormant) {
+        isDormant = dormant;
+        final boolean wanted = isPaddingWanted();
+        for(Future<ConnectionImpl> f: activeConnections.values()) {
+            if(f.isDone()) {
+                try {
+                    f.get().setPaddingWanted(wanted);
+                } catch (Exception e) {
+                    // A failed connection: nothing to tell.
+                }
+            }
+        }
     }
 
     @Override

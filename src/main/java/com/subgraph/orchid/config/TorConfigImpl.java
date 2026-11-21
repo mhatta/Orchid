@@ -72,6 +72,10 @@ public class TorConfigImpl implements TorConfig {
     private String socksListenAddress;
     private volatile String socksPassword;
     private volatile boolean isolateDestAddr;
+    private volatile long dormantClientTimeout = DEFAULT_DORMANT_CLIENT_TIMEOUT;
+    private volatile boolean dormantTimeoutEnabled = true;
+    private volatile boolean dormantTimeoutDisabledByIdleStreams = true;
+    private volatile boolean connectionPadding = true;
     private boolean safeLogging;
     private boolean warnUnsafeSocks;
     private boolean clientRejectInternalAddress;
@@ -347,6 +351,49 @@ public class TorConfigImpl implements TorConfig {
     @Override
     public void setIsolateDestAddr(boolean value) {
         isolateDestAddr = value;
+    }
+
+    @Override
+    public long getDormantClientTimeout() {
+        return dormantClientTimeout;
+    }
+
+    @Override
+    public void setDormantClientTimeout(long millis) {
+        if(millis < MIN_DORMANT_CLIENT_TIMEOUT) {
+            throw new IllegalArgumentException("DormantClientTimeout must be at least 10 minutes: "+ millis +" ms");
+        }
+        dormantClientTimeout = millis;
+    }
+
+    @Override
+    public boolean getDormantTimeoutEnabled() {
+        return dormantTimeoutEnabled;
+    }
+
+    @Override
+    public void setDormantTimeoutEnabled(boolean value) {
+        dormantTimeoutEnabled = value;
+    }
+
+    @Override
+    public boolean getDormantTimeoutDisabledByIdleStreams() {
+        return dormantTimeoutDisabledByIdleStreams;
+    }
+
+    @Override
+    public void setDormantTimeoutDisabledByIdleStreams(boolean value) {
+        dormantTimeoutDisabledByIdleStreams = value;
+    }
+
+    @Override
+    public boolean getConnectionPadding() {
+        return connectionPadding;
+    }
+
+    @Override
+    public void setConnectionPadding(boolean value) {
+        connectionPadding = value;
     }
 
     @Override

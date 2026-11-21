@@ -28,6 +28,7 @@ import com.subgraph.orchid.circuits.path.PathSelectionFailedException;
 import com.subgraph.orchid.data.HexDigest;
 import com.subgraph.orchid.dashboard.DashboardRenderable;
 import com.subgraph.orchid.dashboard.DashboardRenderer;
+import com.subgraph.orchid.crypto.TorRandom;
 import com.subgraph.orchid.logging.Logger;
 import com.subgraph.orchid.misc.TrafficCounter;
 
@@ -64,6 +65,30 @@ public abstract class CircuitImpl implements Circuit, DashboardRenderable {
     private final CircuitStatus status;
 
     private CircuitIO io;
+
+    /*
+     * A circuit built in advance and never used is closed after a random
+     * time between 30 and 60 minutes, as Tor closes unused circuits
+     * (CircuitsAvailableTimeout, formerly CircuitIdleTimeout).  Without it
+     * they stayed open for ever, and so did the connection to the guard,
+     * which pads a quiet connection every few seconds: a device's radio was
+     * never allowed to rest.  If the port is still predicted, the circuit
+     * creation task builds a fresh one.  Random, so that the circuits do
+     * not all close at once.
+     */
+    final static long MIN_UNUSED_LIFETIME = 30 * 60 * 1000;
+    private final long unusedLifetime = MIN_UNUSED_LIFETIME + new TorRandom().nextLong(MIN_UNUSED_LIFETIME);
+
+    /** Whether the circuit is open, has never carried a stream and has been so for longer than its unused lifetime. */
+    boolean isUnusedTooLong() {
+        return isConnected() && isClean() && !isMarkedForClose()
+                && getActiveStreams().isEmpty()
+                && status.getMillisecondsElapsedSinceCreated() > unusedLifetime;
+    }
+
+    long getUnusedLifetime() {
+        return unusedLifetime;
+    }
 
     /** The traffic counter of the circuit manager, or null in tests without one. */
     TrafficCounter getTrafficCounter() {

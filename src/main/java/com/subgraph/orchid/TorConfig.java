@@ -156,6 +156,98 @@ public interface TorConfig {
 	default void setIsolateDestAddr(boolean value) {
 		throw new UnsupportedOperationException("setIsolateDestAddr");
 	}
+
+	/** Tor's default DormantClientTimeout: 24 hours. */
+	long DEFAULT_DORMANT_CLIENT_TIMEOUT = 24L * 60 * 60 * 1000;
+
+	/** Tor's lowest DormantClientTimeout: 10 minutes. */
+	long MIN_DORMANT_CLIENT_TIMEOUT = 10L * 60 * 1000;
+
+	/**
+	 * After how many milliseconds without client activity Orchid becomes
+	 * dormant (Tor's DormantClientTimeout): it stops building circuits in
+	 * advance and downloading directory information, closes the circuits
+	 * that no stream uses, and asks its guards to stop padding, so that the
+	 * device's radio and CPU can rest.  A new stream request wakes it up.
+	 * Client activity is a stream request from an application and, with
+	 * {@link #getDormantTimeoutDisabledByIdleStreams()}, any open stream.
+	 * 24 hours by default; at least 10 minutes.  An Android app may choose
+	 * 30 minutes or an hour.  See {@code TorClient#setDormant(boolean)}.
+	 *
+	 * The default implementation returns {@link #DEFAULT_DORMANT_CLIENT_TIMEOUT}.
+	 *
+	 * @since 2.8.0
+	 */
+	default long getDormantClientTimeout() {
+		return DEFAULT_DORMANT_CLIENT_TIMEOUT;
+	}
+
+	/**
+	 * See {@link #getDormantClientTimeout()}.
+	 *
+	 * @throws IllegalArgumentException if it is less than {@link #MIN_DORMANT_CLIENT_TIMEOUT}.
+	 *         The default implementation throws UnsupportedOperationException.
+	 */
+	default void setDormantClientTimeout(long millis) {
+		throw new UnsupportedOperationException("setDormantClientTimeout");
+	}
+
+	/**
+	 * Whether Orchid becomes dormant by itself after
+	 * {@link #getDormantClientTimeout()} without client activity (Tor's
+	 * DormantTimeoutEnabled).  On by default.  When off, it is dormant only
+	 * when the application says so.  The default implementation returns true.
+	 *
+	 * @since 2.8.0
+	 */
+	default boolean getDormantTimeoutEnabled() {
+		return true;
+	}
+
+	/** See {@link #getDormantTimeoutEnabled()}.  The default implementation throws UnsupportedOperationException. */
+	default void setDormantTimeoutEnabled(boolean value) {
+		throw new UnsupportedOperationException("setDormantTimeoutEnabled");
+	}
+
+	/**
+	 * Whether an open stream, even one that sends and receives nothing,
+	 * counts as client activity and keeps Orchid from becoming dormant
+	 * (Tor's DormantTimeoutDisabledByIdleStreams).  On by default.  Turn it
+	 * off when applications keep connections open that matter little, such
+	 * as an idle HTTP keep-alive connection.  The default implementation
+	 * returns true.
+	 *
+	 * @since 2.8.0
+	 */
+	default boolean getDormantTimeoutDisabledByIdleStreams() {
+		return true;
+	}
+
+	/** See {@link #getDormantTimeoutDisabledByIdleStreams()}.  The default implementation throws UnsupportedOperationException. */
+	default void setDormantTimeoutDisabledByIdleStreams(boolean value) {
+		throw new UnsupportedOperationException("setDormantTimeoutDisabledByIdleStreams");
+	}
+
+	/**
+	 * Whether entry guards may send padding cells on Orchid's connections
+	 * to them (Tor's ConnectionPadding).  On by default.  Guards send one
+	 * on a quiet connection every 1.5 to 9.5 seconds, to blur the records
+	 * that ISPs keep of connections; each one can wake a mobile device's
+	 * radio.  When off, Orchid asks each guard not to (a PADDING_NEGOTIATE
+	 * STOP cell, link protocol 5).  Orchid itself sends no padding.
+	 * Whatever this says, Orchid asks for no padding while it is dormant.
+	 * The default implementation returns true.
+	 *
+	 * @since 2.8.0
+	 */
+	default boolean getConnectionPadding() {
+		return true;
+	}
+
+	/** See {@link #getConnectionPadding()}.  The default implementation throws UnsupportedOperationException. */
+	default void setConnectionPadding(boolean value) {
+		throw new UnsupportedOperationException("setConnectionPadding");
+	}
 	
 	/**
 	 * Whether log messages leave out the destinations of streams (the host

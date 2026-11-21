@@ -64,7 +64,12 @@ public class CircuitCreationTask implements Runnable {
 
     @Override
     public void run() {
+        if(circuitManager.checkDormant()) {
+            // Dormant: the task has been cancelled and does nothing more.
+            return;
+        }
         expireOldCircuits();
+        expireUnusedCircuits();
         assignPendingStreamsToActiveCircuits();
         checkExpiredPendingCircuits();
         checkCircuitsForCreation();		
@@ -127,6 +132,24 @@ public class CircuitCreationTask implements Runnable {
             ((CircuitImpl)c).markForClose();
         }
     }
+    /* See CircuitImpl#isUnusedTooLong(). */
+    private void expireUnusedCircuits() {
+        final Set<Circuit> circuits = circuitManager.getCircuitsByFilter(new CircuitFilter() {
+            @Override
+            public boolean filter(Circuit circuit) {
+                return (circuit instanceof ExitCircuitImpl) && ((CircuitImpl) circuit).isUnusedTooLong();
+            }
+        });
+        for(Circuit c: circuits) {
+            logger.debug("Closing circuit unused since it was built: "+ c);
+            ((CircuitImpl) c).markForClose();
+        }
+        final int internal = circuitManager.expireUnusedInternalCircuits();
+        if(internal > 0) {
+            logger.debug("Closed "+ internal +" unused internal circuits");
+        }
+    }
+
     private void checkExpiredPendingCircuits() {
             // TODO Auto-generated method stub
     }

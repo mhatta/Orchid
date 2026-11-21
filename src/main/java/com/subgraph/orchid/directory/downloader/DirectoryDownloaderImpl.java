@@ -32,6 +32,7 @@ public class DirectoryDownloaderImpl implements DirectoryDownloader {
     private boolean isStopped;
     private DirectoryDownloadTask downloadTask;
     private Thread downloadTaskThread;
+    private boolean isDormant;
 
 
     public DirectoryDownloaderImpl(TorConfig config, TorInitializationTracker initializationTracker) {
@@ -54,6 +55,7 @@ public class DirectoryDownloaderImpl implements DirectoryDownloader {
         }
 
         downloadTask = new DirectoryDownloadTask(config, directory, this);
+        downloadTask.setDormant(isDormant);
         downloadTaskThread = new Thread(downloadTask);
         downloadTaskThread.start();
         isStarted = true;
@@ -67,6 +69,21 @@ public class DirectoryDownloaderImpl implements DirectoryDownloader {
         if(downloadTask != null) {
             downloadTask.networkChanged();
         }
+    }
+
+    /**
+     * Orchid became dormant: download nothing until it wakes up.  On waking
+     * up, the directory is checked at once.
+     */
+    public synchronized void setDormant(boolean dormant) {
+        isDormant = dormant;
+        if(downloadTask != null) {
+            downloadTask.setDormant(dormant);
+        }
+    }
+
+    public synchronized boolean isDormant() {
+        return isDormant;
     }
 
     @Override

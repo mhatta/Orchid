@@ -47,6 +47,41 @@ public class DirectoryDownloadTask implements Runnable {
 
     private volatile boolean isStopped;
 
+    /*
+     * While Orchid is dormant nothing is downloaded and the loop does not
+     * wake up every five seconds: it waits until Orchid wakes up, and then
+     * checks at once, so that a consensus that expired meanwhile is
+     * replaced before circuits are built with it.
+     */
+    private final Object sleepLock = new Object();
+    private boolean isDormant;
+
+    void setDormant(boolean dormant) {
+            synchronized(sleepLock) {
+                    isDormant = dormant;
+                    sleepLock.notifyAll();
+            }
+    }
+
+    boolean isDormant() {
+            synchronized(sleepLock) {
+                    return isDormant;
+            }
+    }
+
+    /* Wait five seconds, or while dormant until woken up. */
+    void waitForNextCheck() throws InterruptedException {
+            synchronized(sleepLock) {
+                    if(isDormant) {
+                            while(isDormant && !isStopped) {
+                                    sleepLock.wait();
+                            }
+                    } else {
+                            sleepLock.wait(5000);
+                    }
+            }
+    }
+
     DirectoryDownloadTask(TorConfig config, Directory directory, DirectoryDownloader downloader) {
             this.config = config;
             this.directory = directory;
@@ -69,11 +104,13 @@ public class DirectoryDownloadTask implements Runnable {
             directory.waitUntilLoaded();
             setCurrentConsensus(directory.getCurrentConsensusDocument());
             while (!isStopped) {
-                    checkCertificates();
-                    checkConsensus();
-                    checkDescriptors();
+                    if(!isDormant()) {
+                            checkCertificates();
+                            checkConsensus();
+                            checkDescriptors();
+                    }
                     try {
-                            Thread.sleep(5000);
+                            waitForNextCheck();
                     } catch (InterruptedException e) {
                             Thread.currentThread().interrupt();
                             return;

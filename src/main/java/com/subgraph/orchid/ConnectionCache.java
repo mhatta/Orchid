@@ -30,4 +30,15 @@ public interface ConnectionCache {
 	}
 
 	boolean isClosed();
+
+	/**
+	 * Orchid became dormant, or woke up: ask the relays on every
+	 * connection, and on those opened from now on, to stop padding while it
+	 * is dormant, and to pad again (if {@link TorConfig#getConnectionPadding()}
+	 * allows it) when it wakes up.  The default implementation does nothing.
+	 *
+	 * @since 2.8.0
+	 */
+	default void setDormant(boolean dormant) {
+	}
 }

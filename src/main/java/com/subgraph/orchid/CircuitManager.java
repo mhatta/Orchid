@@ -43,6 +43,33 @@ public interface CircuitManager {
 	}
 
 	/**
+	 * Whether Orchid is dormant: see {@link TorClient#isDormant()}.  The
+	 * default implementation returns false.
+	 *
+	 * @since 2.8.0
+	 */
+	default boolean isDormant() {
+		return false;
+	}
+
+	/**
+	 * Become dormant, or wake up: see {@link TorClient#setDormant(boolean)}.
+	 * The default implementation does nothing.
+	 *
+	 * @since 2.8.0
+	 */
+	default void setDormant(boolean dormant) {
+	}
+
+	/** See {@link TorClient#addDormantListener(DormantListener)}.  The default implementation does nothing. */
+	default void addDormantListener(DormantListener listener) {
+	}
+
+	/** See {@link TorClient#removeDormantListener(DormantListener)}.  The default implementation does nothing. */
+	default void removeDormantListener(DormantListener listener) {
+	}
+
+	/**
 	 * A snapshot of the circuits: see {@link TorClient#getCircuits()}.  The
 	 * default implementation returns an empty list.
 	 *

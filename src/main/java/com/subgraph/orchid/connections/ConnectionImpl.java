@@ -121,6 +121,22 @@ public class ConnectionImpl implements Connection, DashboardRenderable {
     private int unknownCircuitCells;
     private long unknownCircuitLogTime;
 
+    /*
+     * Link padding (padding-spec, section 2): a guard sends a PADDING cell
+     * on a quiet connection every 1.5 to 9.5 seconds unless the client asks
+     * it not to with PADDING_NEGOTIATE STOP, and START (with zero timeouts:
+     * the guard's own consensus values) asks it to pad again.  Each cell
+     * can wake a mobile device's radio.  The cell exists from link protocol
+     * 5 on.  paddingWanted is what the cache wants for the connection;
+     * paddingStopped is what the relay has last been told.
+     */
+    final static int PADDING_NEGOTIATE_VERSION = 0;
+    final static int PADDING_COMMAND_STOP = 1;
+    final static int PADDING_COMMAND_START = 2;
+    private final Object paddingLock = new Object();
+    private boolean paddingWanted = true;
+    private boolean paddingStopped;
+
 
     public ConnectionImpl(TorConfig config, SSLSocket socket, Router router, TorInitializationTracker tracker, boolean isDirectoryConnection) {
         this(config, socket, router, tracker, isDirectoryConnection, new TrafficCounter());
@@ -236,6 +252,67 @@ public class ConnectionImpl implements Connection, DashboardRenderable {
         handshake.runHandshake();
         handshakeComplete = true;
         updateLastActivity();
+        // Right after NETINFO, as padding-spec says.
+        negotiatePadding();
+    }
+
+    /**
+     * Ask the relay to stop padding this connection, or to pad it again.
+     * Only a change is sent, and only on link protocol 5 and later; before
+     * the handshake completes the wish is recorded and sent after it.
+     */
+    void setPaddingWanted(boolean wanted) {
+        synchronized(paddingLock) {
+            paddingWanted = wanted;
+        }
+        if(handshakeComplete) {
+            negotiatePadding();
+        }
+    }
+
+    boolean isPaddingStopped() {
+        synchronized(paddingLock) {
+            return paddingStopped;
+        }
+    }
+
+    /**
+     * The PADDING_NEGOTIATE command to send, or 0 for none: STOP when
+     * padding is not wanted and the relay has not been told, START when it
+     * is wanted again after a STOP, and nothing before link protocol 5.
+     */
+    static int paddingCommandToSend(boolean wanted, boolean stopped, int linkProtocolVersion) {
+        if(linkProtocolVersion < 5 || wanted != stopped) {
+            return 0;
+        }
+        return wanted ? PADDING_COMMAND_START : PADDING_COMMAND_STOP;
+    }
+
+    private void negotiatePadding() {
+        synchronized(paddingLock) {
+            final int command = paddingCommandToSend(paddingWanted, paddingStopped, linkProtocolVersion);
+            if(isClosed || command == 0) {
+                return;
+            }
+            final boolean stop = (command == PADDING_COMMAND_STOP);
+            try {
+                sendCell(createPaddingNegotiateCell(command));
+                paddingStopped = stop;
+                logger.debug((stop ? "Asked "+ router +" to stop padding" : "Asked "+ router +" to pad again") +" on "+ this);
+            } catch (ConnectionIOException e) {
+                logger.debug("Could not send PADDING_NEGOTIATE to "+ router +": "+ e.getMessage());
+            }
+        }
+    }
+
+    /* tor-spec 7.2: version, command, ito_low_ms, ito_high_ms (0: the relay's defaults). */
+    static Cell createPaddingNegotiateCell(int command) {
+        final Cell cell = CellImpl.createCell(0, Cell.PADDING_NEGOTIATE);
+        cell.putByte(PADDING_NEGOTIATE_VERSION);
+        cell.putByte(command);
+        cell.putShort(0);
+        cell.putShort(0);
+        return cell;
     }
 
     /** Milliseconds left before the handshake deadline (0 when it has passed). */

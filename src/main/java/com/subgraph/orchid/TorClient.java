@@ -212,6 +212,54 @@ public class TorClient {
     }
 
     /**
+     * Whether Orchid is dormant (Tor's dormant mode): it builds no circuits
+     * in advance, downloads no directory information and has asked its
+     * guards to stop padding, so that the device can rest.  It becomes
+     * dormant after {@link TorConfig#getDormantClientTimeout()} without
+     * client activity, or when {@link #setDormant(boolean)} says so, and
+     * wakes up at the next stream request.
+     *
+     * @since 2.8.0
+     */
+    public boolean isDormant() {
+        return circuitManager.isDormant();
+    }
+
+    /**
+     * Become dormant now (<code>true</code>, Tor's SIGNAL DORMANT) or wake
+     * up (<code>false</code>, SIGNAL ACTIVE).  Circuits that carry no
+     * stream are closed; open streams keep working.  The next stream
+     * request wakes Orchid up by itself, so an app need not call
+     * <code>setDormant(false)</code> before using it: the request waits for
+     * a circuit to be built, a few seconds, and longer if the consensus
+     * expired while Orchid was dormant.
+     *
+     * <p>On Android, an app can make Orchid dormant when the user pauses it
+     * or the device has no network, and wake it up when the user opens the
+     * app, so that the first page loads quickly.
+     *
+     * @since 2.8.0
+     */
+    public void setDormant(boolean dormant) {
+        ensureStarted();
+        circuitManager.setDormant(dormant);
+    }
+
+    /**
+     * Be told when Orchid becomes dormant or wakes up.
+     *
+     * @since 2.8.0
+     */
+    public void addDormantListener(DormantListener listener) {
+        circuitManager.addDormantListener(listener);
+    }
+
+    /** @since 2.8.0 */
+    public void removeDormantListener(DormantListener listener) {
+        circuitManager.removeDormantListener(listener);
+    }
+
+    /**
      * How many bytes this client has sent and received since it was
      * created: the cells exchanged with relays, and the data of the
      * applications' streams.  See {@link TrafficInfo} for what each counter

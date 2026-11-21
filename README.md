@@ -200,6 +200,25 @@ is a small app that does all of the following.  An app that embeds it should:
   destinations out of the log.
 * **Report network changes** with `client.notifyNetworkChanged()`, from a
   `ConnectivityManager.NetworkCallback`.
+* **Let Orchid rest when unused.**  After `DormantClientTimeout` without a
+  stream request (24 hours by default, as in Tor; at least 10 minutes),
+  Orchid becomes dormant: it builds no circuits in advance, downloads no
+  directory information, closes the circuits no stream uses and asks its
+  guards to stop padding.  The next request wakes it up.  On a phone a
+  shorter timeout saves battery:
+
+  ```java
+  client.getConfig().setDormantClientTimeout(30 * 60 * 1000);  // 30 minutes
+  ```
+
+  `client.setDormant(true)` makes it dormant at once (when the user pauses
+  the app, say), `setDormant(false)` wakes it up ahead of use, and a
+  `DormantListener` is told of each change, for the foreground notification.
+  Circuits built in advance and never used are closed after 30 to 60
+  minutes in any case, so that the connection to the guard can close.
+  `TorConfig#setConnectionPadding(false)` asks the guards never to pad
+  (Tor's `ConnectionPadding 0`), for metered networks; padding blurs the
+  connection records ISPs keep, so leave it on otherwise.
 * **Keep host names off the device's DNS** with HTTP clients that resolve
   names themselves, such as OkHttp: use `torClient.getSocketFactory(key)` and a
   DNS hook that returns `OrchidSocketFactory.unresolvedAddress(host)`.

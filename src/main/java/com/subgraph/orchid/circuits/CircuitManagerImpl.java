@@ -14,6 +14,7 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -28,6 +29,7 @@ import com.subgraph.orchid.Connection;
 import com.subgraph.orchid.ConnectionCache;
 import com.subgraph.orchid.Directory;
 import com.subgraph.orchid.DirectoryCircuit;
+import com.subgraph.orchid.DormantListener;
 import com.subgraph.orchid.ExitCircuit;
 import com.subgraph.orchid.GuardInfo;
 import com.subgraph.orchid.InternalCircuit;
@@ -74,6 +76,10 @@ public class CircuitManagerImpl implements CircuitManager, DashboardRenderable {
 	private final CircuitPathChooser pathChooser;
 	private final TrafficCounter trafficCounter;
 	private final NewIdentityLimiter newIdentityLimiter;
+	private final DirectoryDownloaderImpl directoryDownloader;
+	private final DormantController dormantController;
+	/* The once a second circuit creation task; cancelled while dormant.  Guarded by lock. */
+	private ScheduledFuture<?> circuitCreationFuture;
 
 	CircuitPathChooser getPathChooser() {
 		return pathChooser;
@@ -116,6 +122,15 @@ public class CircuitManagerImpl implements CircuitManager, DashboardRenderable {
 				applyNewIdentity();
 			}
 		});
+		this.directoryDownloader = directoryDownloader;
+		this.dormantController = new DormantController(config, new DormantController.Hooks() {
+			public void enterDormant() {
+				enterDormantMode();
+			}
+			public void leaveDormant() {
+				leaveDormantMode();
+			}
+		});
 
 		directoryDownloader.setCircuitManager(this);
 	}
@@ -124,10 +139,118 @@ public class CircuitManagerImpl implements CircuitManager, DashboardRenderable {
 		lock.lock();
 		try {
 			isBuilding = true;
-			scheduledExecutor.scheduleAtFixedRate(circuitCreationTask, 0, 1000, TimeUnit.MILLISECONDS);
+			dormantController.noteStartup();
+			if(!dormantController.isDormant()) {
+				scheduleCircuitCreationTask();
+			}
 		} finally {
 			lock.unlock();
 		}
+	}
+
+	/* Called with lock held. */
+	private void scheduleCircuitCreationTask() {
+		if(circuitCreationFuture == null || circuitCreationFuture.isDone()) {
+			circuitCreationFuture = scheduledExecutor.scheduleAtFixedRate(circuitCreationTask, 0, 1000, TimeUnit.MILLISECONDS);
+		}
+	}
+
+	/*
+	 * Dormant mode (Tor's DormantClientTimeout, SIGNAL DORMANT and ACTIVE):
+	 * see DormantController.  Becoming dormant stops the once a second
+	 * task, so that no circuits are built in advance and the CPU is not
+	 * woken up; retires the circuits that no stream uses, so that the
+	 * connections to the guards close once idle; stops the directory
+	 * downloads; and asks the guards to stop padding.  A stream request
+	 * undoes all of it before it waits for a circuit.
+	 */
+	private void enterDormantMode() {
+		lock.lock();
+		try {
+			if(circuitCreationFuture != null) {
+				circuitCreationFuture.cancel(false);
+				circuitCreationFuture = null;
+			}
+		} finally {
+			lock.unlock();
+		}
+		final int retired = retireCircuitsWithoutStreams();
+		logger.debug("Dormant: retired "+ retired +" circuits without streams");
+		directoryDownloader.setDormant(true);
+		connectionCache.setDormant(true);
+	}
+
+	private void leaveDormantMode() {
+		connectionCache.setDormant(false);
+		directoryDownloader.setDormant(false);
+		lock.lock();
+		try {
+			if(isBuilding) {
+				scheduleCircuitCreationTask();
+			}
+		} finally {
+			lock.unlock();
+		}
+	}
+
+	/*
+	 * Retire every circuit, being built or open, that carries no stream:
+	 * those built in advance, and those whose streams have ended.  Circuits
+	 * with streams are left alone; the streams keep working.
+	 */
+	private int retireCircuitsWithoutStreams() {
+		int retired = 0;
+		for(Circuit c: getCircuitsByFilter(null)) {
+			if(c instanceof CircuitImpl && !c.isMarkedForClose() && c.getActiveStreams().isEmpty()) {
+				((CircuitImpl) c).retire();
+				retired++;
+			}
+		}
+		synchronized(cleanInternalCircuits) {
+			cleanInternalCircuits.clear();
+		}
+		return retired;
+	}
+
+	/*
+	 * Whether an application has a stream open: a stream on any circuit but
+	 * a directory circuit (Orchid's own requests).
+	 */
+	boolean hasOpenClientStreams() {
+		return !getCircuitsByFilter(new CircuitFilter() {
+			public boolean filter(Circuit circuit) {
+				return !(circuit instanceof DirectoryCircuitImpl) && !circuit.getActiveStreams().isEmpty();
+			}
+		}).isEmpty();
+	}
+
+	/*
+	 * Called by the circuit creation task about once a second.
+	 *
+	 * @return true if Orchid has just become dormant: the task stops.
+	 */
+	boolean checkDormant() {
+		return dormantController.checkIdle(hasOpenClientStreams());
+	}
+
+	@Override
+	public boolean isDormant() {
+		return dormantController.isDormant();
+	}
+
+	@Override
+	public void setDormant(boolean dormant) {
+		dormantController.setDormant(dormant);
+	}
+
+	@Override
+	public void addDormantListener(DormantListener listener) {
+		dormantController.addListener(listener);
+	}
+
+	@Override
+	public void removeDormantListener(DormantListener listener) {
+		dormantController.removeListener(listener);
 	}
 
 	public void stopBuildingCircuits(boolean killCircuits) {
@@ -311,6 +434,7 @@ public class CircuitManagerImpl implements CircuitManager, DashboardRenderable {
 	public Stream openExitStreamTo(String hostname, int port, String isolationKey)
 			throws InterruptedException, TimeoutException, OpenFailedException {
 		final String name = normalizeHostname(hostname);
+		dormantController.noteClientActivity();
 		if(name.endsWith(".onion")) {
 			return hiddenServiceManager.getStreamTo(name, port, isolationKey);
 		}
@@ -641,10 +765,11 @@ public class CircuitManagerImpl implements CircuitManager, DashboardRenderable {
 		synchronized(cleanInternalCircuits) {
 			try {
 				requestedInternalCircuitCount += 1;
-				while(cleanInternalCircuits.isEmpty()) {
+				InternalCircuit c;
+				while((c = pollUsableCleanInternalCircuit()) == null) {
 					cleanInternalCircuits.wait();
 				}
-				return cleanInternalCircuits.remove();
+				return c;
 			} finally {
 				requestedInternalCircuitCount -= 1;
 			}
@@ -663,18 +788,57 @@ public class CircuitManagerImpl implements CircuitManager, DashboardRenderable {
 		synchronized(cleanInternalCircuits) {
 			try {
 				requestedInternalCircuitCount += 1;
-				while(cleanInternalCircuits.isEmpty()) {
+				InternalCircuit c;
+				while((c = pollUsableCleanInternalCircuit()) == null) {
 					final long remaining = deadline - System.currentTimeMillis();
 					if(remaining <= 0) {
 						throw new TimeoutException("No internal circuit available after "+ timeoutMillis +" ms");
 					}
 					cleanInternalCircuits.wait(remaining);
 				}
-				return cleanInternalCircuits.remove();
+				return c;
 			} finally {
 				requestedInternalCircuitCount -= 1;
 			}
 		}
+	}
+
+	/*
+	 * The next clean internal circuit that is not closing, or null.  A
+	 * circuit can be retired (new identity, dormancy, idle expiry) while it
+	 * waits in the queue or after it was built for it, and must not be
+	 * handed out.  Called with the cleanInternalCircuits monitor held.
+	 */
+	private InternalCircuit pollUsableCleanInternalCircuit() {
+		while(!cleanInternalCircuits.isEmpty()) {
+			final InternalCircuit c = cleanInternalCircuits.remove();
+			if(!c.isMarkedForClose()) {
+				return c;
+			}
+		}
+		return null;
+	}
+
+	/*
+	 * Close the clean internal circuits that have waited longer than their
+	 * idle lifetime (see CircuitImpl#isUnusedTooLong()).
+	 */
+	int expireUnusedInternalCircuits() {
+		final List<InternalCircuitImpl> expired = new ArrayList<InternalCircuitImpl>();
+		synchronized(cleanInternalCircuits) {
+			final java.util.Iterator<InternalCircuit> it = cleanInternalCircuits.iterator();
+			while(it.hasNext()) {
+				final InternalCircuit c = it.next();
+				if(c instanceof InternalCircuitImpl && ((InternalCircuitImpl) c).isUnusedTooLong()) {
+					it.remove();
+					expired.add((InternalCircuitImpl) c);
+				}
+			}
+		}
+		for(InternalCircuitImpl c: expired) {
+			c.markForClose();
+		}
+		return expired.size();
 	}
 
 	int getNeededCleanCircuitCount(boolean isPredicted) {
