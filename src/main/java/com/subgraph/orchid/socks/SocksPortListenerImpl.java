@@ -17,6 +17,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.subgraph.orchid.CircuitManager;
+import com.subgraph.orchid.ProxyStatistics;
 import com.subgraph.orchid.SocksPortListener;
 import com.subgraph.orchid.Threading;
 import com.subgraph.orchid.TorConfig;
@@ -54,6 +55,7 @@ public class SocksPortListenerImpl implements SocksPortListener {
     /* The ports of listeningPorts that are HTTP tunnel ports, not SOCKS ports. */
     private final Set<Integer> httpTunnelPorts = new HashSet<Integer>();
     private final Map<Integer, AcceptTask> acceptThreads = new HashMap<Integer, AcceptTask>();
+    private final ProxyCounters counters = new ProxyCounters();
     private final TorConfig config;
     private final CircuitManager circuitManager;
     private final ExecutorService executor;
@@ -78,6 +80,11 @@ public class SocksPortListenerImpl implements SocksPortListener {
     @Override
     public void addHttpTunnelPort(int port) {
         addPort(port, true);
+    }
+
+    @Override
+    public ProxyStatistics getStatistics() {
+        return counters.snapshot();
     }
 
     private void addPort(int port, boolean httpTunnel) {
@@ -168,8 +175,8 @@ public class SocksPortListenerImpl implements SocksPortListener {
 
     private Runnable newClientSocket(final Socket s, final Handshake handshake, boolean httpTunnel) {
         final Runnable task = httpTunnel
-                ? new HttpTunnelClientTask(config, s, circuitManager, handshake)
-                : new SocksClientTask(config, s, circuitManager, handshake);
+                ? new HttpTunnelClientTask(config, s, circuitManager, handshake, counters)
+                : new SocksClientTask(config, s, circuitManager, handshake, counters);
         return new Runnable() {
             public void run() {
                 try {

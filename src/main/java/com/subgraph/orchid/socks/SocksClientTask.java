@@ -19,16 +19,22 @@ public class SocksClientTask implements Runnable {
     private final CircuitManager circuitManager;
     /* Called once the request has been read: see SocksPortListenerImpl.Handshake. */
     private final Runnable requestRead;
+    private final ProxyCounters counters;
 
     SocksClientTask(TorConfig config, Socket socket, CircuitManager circuitManager) {
         this(config, socket, circuitManager, null);
     }
 
     SocksClientTask(TorConfig config, Socket socket, CircuitManager circuitManager, Runnable requestRead) {
+        this(config, socket, circuitManager, requestRead, new ProxyCounters());
+    }
+
+    SocksClientTask(TorConfig config, Socket socket, CircuitManager circuitManager, Runnable requestRead, ProxyCounters counters) {
         this.config = config;
         this.socket = socket;
         this.circuitManager = circuitManager;
         this.requestRead = requestRead;
+        this.counters = counters;
     }
 
     @Override
@@ -109,6 +115,13 @@ public class SocksClientTask implements Runnable {
                 request.sendError(true);
                 return;
             }
+            final boolean refuse = request.isAddressOnly() && ProxyAuthentication.refuseAddressOnly(config);
+            counters.record(request.getProfile(), request.isAddressOnly(), refuse);
+            if(refuse) {
+                logger.info("SOCKS request with an address only refused (SafeSocks)");
+                request.sendError(false);
+                return;
+            }
 
             try {
                 final Stream stream = openConnectStream(request);
@@ -127,6 +140,10 @@ public class SocksClientTask implements Runnable {
                 request.sendConnectionRefused();
             }
         } catch (SocksRequestException e) {
+            if(request.isAddressOnly()) {
+                // An IPv6 address, refused as unsupported
+                counters.record(request.getProfile(), true, false);
+            }
             logger.warn("Failure reading SOCKS request: "+ e.getMessage());
             try {
                 request.sendError(false);

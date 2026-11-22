@@ -40,7 +40,7 @@ public class Socks4Request extends SocksRequest {
 		setPortData(readPortData());
 		byte[] ipv4Data = readIPv4AddressData();
 		final String userId = readNullTerminatedString();
-		if(getConfig().getSocksPassword() != null) {
+		if(ProxyAuthentication.isRequired(getConfig())) {
 			// SOCKS 4 has no password, so it cannot authenticate.
 			throw new SocksRequestException("SOCKS 4 refused: the SOCKS port requires a password (use SOCKS 5)");
 		}

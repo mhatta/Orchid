@@ -349,6 +349,19 @@ public class TorClient {
         enableSocksListener(9150);
     }
 
+    /**
+     * What the SOCKS and HTTP tunnel ports have been asked since this client
+     * started, in total and by password profile
+     * ({@link TorConfig#setSocksPasswords(java.util.Map)}): above all, how
+     * many requests gave an IP address instead of a host name, which means
+     * that the application most likely looked the name up outside Tor.
+     *
+     * @since 2.9.0
+     */
+    public ProxyStatistics getProxyStatistics() {
+        return socksListener.getStatistics();
+    }
+
     public void enableDashboard() {
         if(!dashboard.isListening()) {
             dashboard.startListening();

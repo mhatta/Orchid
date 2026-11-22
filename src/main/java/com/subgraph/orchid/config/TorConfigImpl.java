@@ -8,8 +8,13 @@ import com.subgraph.orchid.logging.SafeLogging;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.nio.charset.StandardCharsets;
 import java.util.Collections;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 public class TorConfigImpl implements TorConfig {
@@ -68,16 +73,18 @@ public class TorConfigImpl implements TorConfig {
     private boolean strictNodes;
     private boolean fascistFirewall;
     private List<Integer> firewallPorts;
-    private boolean safeSocks;
+    /* Read for each SOCKS request, possibly while another thread sets them. */
+    private volatile boolean safeSocks;
     private String socksListenAddress;
     private volatile String socksPassword;
+    private volatile Map<String, String> socksPasswords = Collections.emptyMap();
     private volatile boolean isolateDestAddr;
     private volatile long dormantClientTimeout = DEFAULT_DORMANT_CLIENT_TIMEOUT;
     private volatile boolean dormantTimeoutEnabled = true;
     private volatile boolean dormantTimeoutDisabledByIdleStreams = true;
     private volatile boolean connectionPadding = true;
     private boolean safeLogging;
-    private boolean warnUnsafeSocks;
+    private volatile boolean warnUnsafeSocks;
     private boolean clientRejectInternalAddress;
     private boolean handshakeV3Enabled;
     private boolean handshakeV2Enabled;
@@ -341,6 +348,39 @@ public class TorConfigImpl implements TorConfig {
     @Override
     public void setSocksPassword(String password) {
         socksPassword = password;
+    }
+
+    @Override
+    public Map<String, String> getSocksPasswords() {
+        return socksPasswords;
+    }
+
+    @Override
+    public void setSocksPasswords(Map<String, String> passwordsByProfile) {
+        if(passwordsByProfile == null || passwordsByProfile.isEmpty()) {
+            socksPasswords = Collections.emptyMap();
+            return;
+        }
+        final Map<String, String> copy = new LinkedHashMap<String, String>();
+        final Set<String> seen = new HashSet<String>();
+        for(Map.Entry<String, String> e: passwordsByProfile.entrySet()) {
+            final String name = e.getKey();
+            final String password = e.getValue();
+            if(name == null || name.isEmpty()) {
+                throw new IllegalArgumentException("A password profile needs a name");
+            }
+            if(password == null || password.isEmpty()) {
+                throw new IllegalArgumentException("The password of profile "+ name +" is empty");
+            }
+            if(password.getBytes(StandardCharsets.UTF_8).length > 255) {
+                throw new IllegalArgumentException("The password of profile "+ name +" is longer than 255 bytes");
+            }
+            if(!seen.add(password)) {
+                throw new IllegalArgumentException("Profile "+ name +" has the password of another profile");
+            }
+            copy.put(name, password);
+        }
+        socksPasswords = Collections.unmodifiableMap(copy);
     }
 
     @Override

@@ -6,7 +6,6 @@ import java.io.InputStream;
 import java.net.Socket;
 import java.net.SocketException;
 import java.nio.charset.Charset;
-import java.security.MessageDigest;
 import java.util.Locale;
 import java.util.concurrent.TimeoutException;
 
@@ -27,14 +26,16 @@ import com.subgraph.orchid.logging.Logger;
  * <p>The user name and password of a <code>Proxy-Authorization: Basic</code>
  * header isolate the streams as the SOCKS 5 user name and password do: the
  * same credentials give the same isolation key on both ports, as in Tor
- * (without IsolateClientProtocol).  If a SOCKS password is set
- * ({@link TorConfig#setSocksPassword(String)}), it is required here too,
- * and a client without it gets "407 Proxy Authentication Required".
+ * (without IsolateClientProtocol).  If a SOCKS password or password
+ * profiles are set ({@link TorConfig#setSocksPassword(String)},
+ * {@link TorConfig#setSocksPasswords(java.util.Map)}), one of them is
+ * required here too, and a client without it gets "407 Proxy
+ * Authentication Required".  With SafeSocks, a CONNECT to an IP address
+ * gets "403 Forbidden".
  */
 final class HttpTunnelClientTask implements Runnable {
     private static final Logger logger = Logger.getInstance(HttpTunnelClientTask.class);
     private static final Charset LATIN1 = Charset.forName("ISO-8859-1");
-    private static final Charset UTF8 = Charset.forName("UTF-8");
 
     /* The most bytes of request line and headers read before giving up. */
     static final int MAX_HEADER_BYTES = 8192;
@@ -43,12 +44,18 @@ final class HttpTunnelClientTask implements Runnable {
     private final Socket socket;
     private final CircuitManager circuitManager;
     private final Runnable requestRead;
+    private final ProxyCounters counters;
 
     HttpTunnelClientTask(TorConfig config, Socket socket, CircuitManager circuitManager, Runnable requestRead) {
+        this(config, socket, circuitManager, requestRead, new ProxyCounters());
+    }
+
+    HttpTunnelClientTask(TorConfig config, Socket socket, CircuitManager circuitManager, Runnable requestRead, ProxyCounters counters) {
         this.config = config;
         this.socket = socket;
         this.circuitManager = circuitManager;
         this.requestRead = requestRead;
+        this.counters = counters;
     }
 
     /* A request that cannot be served; the message is the status line's reason and body. */
@@ -68,10 +75,21 @@ final class HttpTunnelClientTask implements Runnable {
         final String host;
         final int port;
         final String isolationKey;
-        Request(String host, int port, String isolationKey) {
+        /* The password profile: see ProxyAuthentication.authenticate(). */
+        final String profile;
+        /* An IPv6 address, which cannot be served yet; host is null. */
+        final boolean ipv6;
+        Request(String host, int port, String isolationKey, String profile, boolean ipv6) {
             this.host = host;
             this.port = port;
             this.isolationKey = isolationKey;
+            this.profile = profile;
+            this.ipv6 = ipv6;
+        }
+
+        /* An IP address instead of a host name: see ProxyStatistics. */
+        boolean isAddressOnly() {
+            return ipv6 || ProxyAuthentication.isAddressLiteral(host);
         }
     }
 
@@ -81,11 +99,19 @@ final class HttpTunnelClientTask implements Runnable {
             setReadTimeout(Math.min(positive(config.getSocksTimeout()), SocksPortListenerImpl.HANDSHAKE_TIMEOUT_MS));
             final Request request;
             try {
-                request = parse(readHeader(socket.getInputStream()), config.getSocksPassword());
+                request = parse(readHeader(socket.getInputStream()), config);
             } finally {
                 if(requestRead != null) {
                     requestRead.run();
                 }
+            }
+            final boolean refuse = request.isAddressOnly() && !request.ipv6 && ProxyAuthentication.refuseAddressOnly(config);
+            counters.record(request.profile, request.isAddressOnly(), refuse);
+            if(request.ipv6) {
+                throw new HttpError(400, "Bad Request", "IPv6 addresses are not supported.");
+            }
+            if(refuse) {
+                throw new HttpError(403, "Forbidden", "Give a host name, not an address.");
             }
             serve(request);
         } catch(HttpError e) {
@@ -150,7 +176,7 @@ final class HttpTunnelClientTask implements Runnable {
         }
     }
 
-    static Request parse(String header, String requiredPassword) throws HttpError {
+    static Request parse(String header, TorConfig config) throws HttpError {
         final String[] lines = header.split("\r?\n");
         final String[] requestLine = lines[0].split(" ");
         if(requestLine.length != 3 || !requestLine[2].startsWith("HTTP/1.")) {
@@ -161,14 +187,13 @@ final class HttpTunnelClientTask implements Runnable {
                     "Only CONNECT is supported.");
         }
         final String authority = requestLine[1];
-        if(authority.startsWith("[")) {
-            throw new HttpError(400, "Bad Request", "IPv6 addresses are not supported.");
-        }
+        /* An IPv6 address ("[::1]:443") is refused once the credentials are read (see run()), so that it is counted. */
+        final boolean ipv6 = authority.startsWith("[");
         final int colon = authority.lastIndexOf(':');
         if(colon <= 0 || colon == authority.length() - 1) {
             throw new HttpError(400, "Bad Request", "CONNECT needs a host and a port (host:port).");
         }
-        final String host = authority.substring(0, colon);
+        final String host = ipv6 ? null : authority.substring(0, colon);
         final int port;
         try {
             port = Integer.parseInt(authority.substring(colon + 1));
@@ -190,13 +215,12 @@ final class HttpTunnelClientTask implements Runnable {
                 credentials = parseBasic(lines[i].substring(c + 1).trim());
             }
         }
-        if(requiredPassword != null) {
-            if(credentials == null || !MessageDigest.isEqual(credentials[1], requiredPassword.getBytes(UTF8))) {
-                throw new HttpError(407, "Proxy Authentication Required", "This proxy needs the password.");
-            }
+        final String profile = ProxyAuthentication.authenticate(config, credentials == null ? null : credentials[1]);
+        if(profile == null) {
+            throw new HttpError(407, "Proxy Authentication Required", "This proxy needs the password.");
         }
         final String key = (credentials == null) ? null : SocksRequest.makeIsolationKey("socks5", credentials[0], credentials[1]);
-        return new Request(host, port, key);
+        return new Request(host, port, key, profile, ipv6);
     }
 
     /* User and password of "Basic base64(user:password)", or null for another scheme. */

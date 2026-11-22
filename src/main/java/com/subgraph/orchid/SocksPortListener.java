@@ -13,5 +13,16 @@ public interface SocksPortListener {
 	default void addHttpTunnelPort(int port) {
 		throw new UnsupportedOperationException("addHttpTunnelPort");
 	}
+
+	/**
+	 * What the ports have been asked so far.  The default implementation
+	 * returns no requests.
+	 *
+	 * @since 2.9.0
+	 */
+	default ProxyStatistics getStatistics() {
+		return ProxyStatistics.empty();
+	}
+
 	void stop();
 }

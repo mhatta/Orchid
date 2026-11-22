@@ -5,6 +5,7 @@ import java.net.Socket;
 import java.security.MessageDigest;
 import java.util.Locale;
 
+import com.subgraph.orchid.ProxyStatistics;
 import com.subgraph.orchid.TorConfig;
 import com.subgraph.orchid.data.IPv4Address;
 import com.subgraph.orchid.logging.Logger;
@@ -27,7 +28,10 @@ public abstract class SocksRequest {
     private String hostname;
     private int port;
 
-    private long lastWarningTimestamp = 0;
+    /* The request gave an address, not a host name: see isAddressOnly(). */
+    private boolean addressOnly;
+    /* See getProfile(). */
+    private String profile = ProxyStatistics.NO_PROFILE;
 
     /* See getIsolationKey(). */
     private String isolationKey;
@@ -142,8 +146,7 @@ public abstract class SocksRequest {
     }
 
     protected void setIPv4AddressData(byte[] data) throws SocksRequestException {
-        logUnsafeSOCKS();
-
+        addressOnly = true;
         if(data.length != 4)
             throw new SocksRequestException();
         addressData = data;
@@ -156,29 +159,35 @@ public abstract class SocksRequest {
         address = new IPv4Address(addressValue);
     }
 
-    private boolean testRateLimit() {
-        final long now = System.currentTimeMillis();
-        final long diff = now - lastWarningTimestamp;
-        lastWarningTimestamp = now;
-        return diff > 5000;
-    }
-
-    private void logUnsafeSOCKS() throws SocksRequestException {
-        if((config.getWarnUnsafeSocks() || config.getSafeSocks()) && testRateLimit()) {
-            logger.warn("Your application is giving Orchid only "+
-                                            "an IP address.  Applications that do DNS "+
-                                            "resolves themselves may leak information. "+
-                                            "Consider using Socks4a (e.g. via privoxy or socat) "+ 
-                                            "instead.  For more information please see "+
-                                            "https://wiki.torproject.org/TheOnionRouter/TorFAQ#SOCKSAndDNS");
-        }
-        if(config.getSafeSocks()) {
-            throw new SocksRequestException("Rejecting unsafe SOCKS request");
-        }		
-    }
-
     protected void setHostname(String name) {
         hostname = name;
+        if(ProxyAuthentication.isAddressLiteral(name)) {
+            addressOnly = true;
+        }
+    }
+
+    /* An IPv6 address, which is refused before it is parsed. */
+    protected void setAddressOnly() {
+        addressOnly = true;
+    }
+
+    /**
+     * Whether the request gave an IP address instead of a host name: SOCKS 4
+     * (not 4a), SOCKS 5 with an IPv4 or IPv6 address, or a host name that is
+     * an address literal.  The application has then most likely looked the
+     * name up itself, outside Tor.
+     */
+    public boolean isAddressOnly() {
+        return addressOnly;
+    }
+
+    /** The password profile of the client: see {@link ProxyAuthentication#authenticate}. */
+    public String getProfile() {
+        return profile;
+    }
+
+    protected void setProfile(String profile) {
+        this.profile = profile;
     }
 
     protected byte[] readPortData() throws SocksRequestException {

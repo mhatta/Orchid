@@ -96,6 +96,22 @@ are refused.  Applications that use Orchid as a library can isolate streams
 too, with `TorClient#openExitStreamTo(host, port, isolationKey)` or
 `TorClient#getSocketFactory(isolationKey)`.
 
+`TorConfig#setSocksPasswords(Map)` (since 2.9.0) sets a password for each
+named application, any of which the ports accept: each application then has
+circuits of its own, so that it cannot ride on another's circuits or learn
+from their timing which hosts it went to, and its requests are counted
+separately (see below).  The passwords, the profiles and the isolation
+options are read for each request, so they can be changed while the client
+runs.
+
+Applications that look host names up themselves and then give Orchid only an
+address leak those names to the local network's DNS.  Orchid logs a warning
+for such requests (`WarnUnsafeSocks`, on by default) and refuses them with
+`TorConfig#setSafeSocks(true)`: SOCKS 4, SOCKS 5 with an address, and, unlike
+Tor, host names or CONNECT authorities that are address literals.
+`TorClient#getProxyStatistics()` (since 2.9.0) counts them, in total and by
+profile, so that an application can tell which of its clients do it.
+
 Clients that cannot send credentials, such as apps that follow the Wi-Fi
 proxy setting of Android, would all share the same circuits.
 `TorConfig#setIsolateDestAddr(true)` (Tor's IsolateDestAddr) gives every
@@ -248,7 +264,8 @@ is a small app that does all of the following.  An app that embeds it should:
   ISRG Root X1 and X2 with a network security config.
 * **Protect the SOCKS port**, if the app opens one: every app on the device
   can connect to `127.0.0.1`.  Set a random password with
-  `TorConfig#setSocksPassword()` and give it only to the app's own HTTP client.
+  `TorConfig#setSocksPassword()` and give it only to the app's own HTTP client
+  (or one per client app, with `TorConfig#setSocksPasswords()`).
 * **Test on a device or an emulator**: the sample's instrumented test
   (`gradlew connectedDebugAndroidTest` in `samples/android`) checks that a
   request through Orchid reaches check.torproject.org from Tor.

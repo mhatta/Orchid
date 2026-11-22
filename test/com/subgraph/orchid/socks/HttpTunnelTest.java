@@ -99,13 +99,15 @@ public class HttpTunnelTest {
 	}
 
 	private static HttpTunnelClientTask.Request parse(String header, String password) throws HttpTunnelClientTask.HttpError {
-		return HttpTunnelClientTask.parse(header, password);
+		final TorConfigImpl c = new TorConfigImpl();
+		c.setSocksPassword(password);
+		return HttpTunnelClientTask.parse(header, c);
 	}
 
+	/* The status the port answers with: an IPv6 address is refused after parsing, once it is counted. */
 	private static int status(String header, String password) {
 		try {
-			parse(header, password);
-			return 200;
+			return parse(header, password).ipv6 ? 400 : 200;
 		} catch(HttpTunnelClientTask.HttpError e) {
 			return e.status;
 		}

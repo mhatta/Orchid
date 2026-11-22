@@ -74,6 +74,7 @@ public class Socks5Request extends SocksRequest {
 			setHostname(addressBytesToHostname());
 		else {
 			// IPv6: exit streams to IPv6 addresses are not supported yet.
+			setAddressOnly();
 			addressTypeUnsupported = true;
 			throw new SocksRequestException("SOCKS 5 address type "+ addressType +" is not supported");
 		}
@@ -129,11 +130,10 @@ public class Socks5Request extends SocksRequest {
 			}
 		}
 
-		final String requiredPassword = getConfig().getSocksPassword();
 		if(foundUserPass) {
 			sendAuthenticationResponse(SOCKS5_AUTH_USERPASS);
-			return processUserPassAuthentication(requiredPassword);
-		} else if(foundAuthNone && requiredPassword == null) {
+			return processUserPassAuthentication();
+		} else if(foundAuthNone && !ProxyAuthentication.isRequired(getConfig())) {
 			sendAuthenticationResponse(SOCKS5_AUTH_NONE);
 			return true;
 		} else {
@@ -142,16 +142,18 @@ public class Socks5Request extends SocksRequest {
 		}
 	}
 
-	private boolean processUserPassAuthentication(String requiredPassword) throws SocksRequestException {
+	private boolean processUserPassAuthentication() throws SocksRequestException {
 		if(readByte() != USERPASS_VERSION) {
 			throw new SocksRequestException("Bad username/password authentication version");
 		}
 		final byte[] username = readLengthPrefixed();
 		final byte[] password = readLengthPrefixed();
-		if(requiredPassword != null && !constantTimeEquals(password, requiredPassword.getBytes(java.nio.charset.StandardCharsets.UTF_8))) {
+		final String profile = ProxyAuthentication.authenticate(getConfig(), password);
+		if(profile == null) {
 			sendUserPassResponse(USERPASS_FAILURE);
 			return false;
 		}
+		setProfile(profile);
 		sendUserPassResponse(USERPASS_SUCCESS);
 		setIsolationKey("socks5", username, password);
 		return true;

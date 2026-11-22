@@ -5,7 +5,9 @@ import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import com.subgraph.orchid.config.TorConfigBridgeLine;
@@ -97,6 +99,17 @@ public interface TorConfig {
 	List<Integer> getFirewallPorts();
 	void setFirewallPorts(List<Integer> ports);
 	
+	/**
+	 * Whether the SOCKS and HTTP tunnel ports refuse requests that give an
+	 * IP address instead of a host name (Tor's SafeSocks): SOCKS 4 (not
+	 * 4a), SOCKS 5 with an IPv4 or IPv6 address, and, unlike Tor, a host
+	 * name or a CONNECT authority that is an address literal.  An
+	 * application that sends one has most likely looked the name up itself,
+	 * through the device's DNS resolver and outside Tor.  Off by default;
+	 * the refused requests are counted (see
+	 * {@link TorClient#getProxyStatistics()}).  Read for each request, so
+	 * it can be changed while the client runs.
+	 */
 	boolean getSafeSocks();
 	void setSafeSocks(boolean value);
 
@@ -119,7 +132,11 @@ public interface TorConfig {
 	 *
 	 * On Android every app can connect to a SOCKS port on 127.0.0.1; a
 	 * random password, given only to the app's own HTTP client, keeps the
-	 * other apps out.
+	 * other apps out.  To give each application its own password, use
+	 * {@link #setSocksPasswords(Map)}; a client may then give either.
+	 *
+	 * The password is read for each request, so it can be changed while
+	 * the client runs; streams already open are not affected.
 	 *
 	 * The default implementation returns null.
 	 */
@@ -130,6 +147,46 @@ public interface TorConfig {
 	/** See {@link #getSocksPassword()}.  The default implementation throws UnsupportedOperationException. */
 	default void setSocksPassword(String password) {
 		throw new UnsupportedOperationException("setSocksPassword");
+	}
+
+	/**
+	 * Password profiles: a password for each named application (or group of
+	 * them), any of which the SOCKS and HTTP tunnel ports accept, with any
+	 * user name.  Unmodifiable; empty (the default) for none.  When there
+	 * is at least one, clients must give a password, as with
+	 * {@link #getSocksPassword()} (which they may give instead), and
+	 * SOCKS 4 is refused.
+	 *
+	 * Streams with different credentials never share a circuit, so each
+	 * profile gets its own circuits: an app cannot ride on the circuits of
+	 * another, or learn from their timing which hosts it went to.  The
+	 * requests are counted by profile (see
+	 * {@link TorClient#getProxyStatistics()}), which says, for instance,
+	 * which app gives addresses instead of host names.
+	 *
+	 * The profiles are read for each request, so they can be changed while
+	 * the client runs; streams already open are not affected.
+	 *
+	 * The default implementation returns an empty map.
+	 *
+	 * @since 2.9.0
+	 */
+	default Map<String, String> getSocksPasswords() {
+		return Collections.emptyMap();
+	}
+
+	/**
+	 * See {@link #getSocksPasswords()}: profile name to password, copied;
+	 * null or an empty map for none.  The names and passwords must not be
+	 * null or empty, a password must be at most 255 bytes in UTF-8 (the
+	 * most SOCKS 5 can carry), and no two profiles may have the same
+	 * password, or IllegalArgumentException is thrown.  The default
+	 * implementation throws UnsupportedOperationException.
+	 *
+	 * @since 2.9.0
+	 */
+	default void setSocksPasswords(Map<String, String> passwordsByProfile) {
+		throw new UnsupportedOperationException("setSocksPasswords");
 	}
 
 	/**
@@ -272,6 +329,11 @@ public interface TorConfig {
 	boolean getSafeLogging();
 	void setSafeLogging(boolean value);
 
+	/**
+	 * Whether to log a warning (at most every five seconds) when a request
+	 * gives an IP address instead of a host name: see
+	 * {@link #getSafeSocks()}.  On by default, as in Tor.
+	 */
 	boolean getWarnUnsafeSocks();
 	void setWarnUnsafeSocks(boolean value);
 
