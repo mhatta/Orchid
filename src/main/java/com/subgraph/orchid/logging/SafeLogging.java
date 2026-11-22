@@ -56,7 +56,7 @@ public final class SafeLogging {
      * "[Bridge]" for a bridge when SafeLogging is on (a bridge has no
      * nickname, and its address is meant to stay secret).
      *
-     * @since 2.8.1
+     * @since 2.9.0
      */
     public static String relay(Router router) {
         if(router == null) {
@@ -72,7 +72,7 @@ public final class SafeLogging {
      * The message with its IPv4 and IPv6 addresses replaced by
      * "[scrubbed]" when SafeLogging is on, unchanged otherwise.
      *
-     * @since 2.8.1
+     * @since 2.9.0
      */
     public static String addresses(String message) {
         if(!enabled || message == null) {

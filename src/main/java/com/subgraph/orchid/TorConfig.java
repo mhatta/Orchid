@@ -320,7 +320,7 @@ public interface TorConfig {
 	/**
 	 * Whether log messages leave out the destinations of streams (the host
 	 * names, addresses and onion addresses that SOCKS clients connect to),
-	 * and, since 2.8.1, the addresses of relays and bridges and the IP
+	 * and, since 2.9.0, the addresses of relays and bridges and the IP
 	 * addresses in socket errors: relays are named by nickname only and
 	 * bridges as "[Bridge]".  On by default.  As the logger, this applies
 	 * to the whole process.  {@link com.subgraph.orchid.Router#getNickname()}
