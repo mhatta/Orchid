@@ -1,10 +1,11 @@
 Orchid
 ======
-
-[![CI](https://github.com/mhatta/Orchid/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/mhatta/Orchid/actions/workflows/ci.yml)
-[![Android](https://github.com/mhatta/Orchid/actions/workflows/android.yml/badge.svg?branch=master)](https://github.com/mhatta/Orchid/actions/workflows/android.yml)
+[![CI](https://github.com/mhatta/Orchid/actions/workflows/ci.yml/badge.svg)](https://github.com/mhatta/Orchid/actions/workflows/ci.yml)
+[![Android](https://github.com/mhatta/Orchid/actions/workflows/android.yml/badge.svg)](https://github.com/mhatta/Orchid/actions/workflows/android.yml)
 [![Maven Central](https://img.shields.io/maven-central/v/org.mhatta/orchid)](https://central.sonatype.com/artifact/org.mhatta/orchid)
-[![Packaging status](https://repology.org/badge/tiny-repos/orchid.svg)](https://repology.org/project/orchid/versions)
+[![javadoc](https://javadoc.io/badge2/org.mhatta/orchid/javadoc.svg)](https://javadoc.io/doc/org.mhatta/orchid)
+[![Debian](https://img.shields.io/debian/v/orchid/unstable)](https://tracker.debian.org/pkg/orchid)
+[![Java 8+](https://img.shields.io/badge/Java-8%2B-blue)](#)
 [![License](https://img.shields.io/badge/license-BSD--3--Clause-blue)](LICENSE)
 
 Orchid is a Tor client implementation and library written in pure Java.  Orchid's strength is that it can be used to Tor-ify Java and JVM applications with near transparency.
