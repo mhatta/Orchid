@@ -26,18 +26,19 @@ public class ApplicationProperties {
     private static String[] TRUSTED_DIRECTORY_AUTHORITIES = {
 
 	// Kept in sync with src/app/config/auth_dirs.inc of the Tor source.
-	// Last updated 2026-10: moria1 (new keys and ports, 2023), tor26 (new keys
-	// and address, 2024), dizum (new address) and faravahar (re-added with new
-	// keys and address; replaces the retired "Faravahar" entry).
+	// Last updated 2026-11: moria1 (new keys and ports, 2023), tor26 (new keys
+	// and address, 2024), dizum (new address), faravahar (re-added with new
+	// keys and address; replaces the retired "Faravahar" entry), maatuska (new
+	// addresses) and sekhmet (replaces bastet, same IPv4 address, new keys).
 	"authority moria1 orport=9201 v3ident=F533C81CEF0BC0267857C99B2F471ADF249FA232 128.31.0.39:9231 1A25 C635 8DB9 1342 AA51 720A 5038 B727 4273 2498",
 	"authority tor26 orport=443 v3ident=2F3DF9CA0E5D36F2685A2DA67184EB8DCB8CBA8C ipv6=[2a02:16a8:662:2203::1]:443 217.196.147.77:80 FAA4 BCA4 A6AC 0FB4 CA2F 8AD5 A11D 9E12 2BA8 94F6",
 	"authority dizum orport=443 v3ident=E8A9C45EDE6D711294FADF8E7951F4DE6CA56B58 45.66.35.11:80 7EA6 EAD6 FD83 083C 538F 4403 8BBF A077 587D D755",
 	"authority Serge orport=9001 bridge 66.111.2.131:9030 BA44 A889 E64B 93FA A2B1 14E0 2C2A 279A 8555 C533",
 	"authority gabelmoo orport=443 v3ident=ED03BB616EB2F60BEC80151114BB25CEF515B226 ipv6=[2001:638:a000:4140::ffff:189]:443 131.188.40.189:80 F204 4413 DAC2 E02E 3D6B CF47 35A1 9BCA 1DE9 7281",
 	"authority dannenberg orport=443 v3ident=0232AF901C31A04EE9848595AF9BB7620D4C5B2E ipv6=[2001:678:558:1000::244]:443 193.23.244.244:80 7BE6 83E6 5D48 1413 21C5 ED92 F075 C553 64AC 7123",
-	"authority maatuska orport=80 v3ident=49015F787433103580E3B66A1707A00E60F2D15B ipv6=[2001:67c:289c::9]:80 171.25.193.9:443 BD6A 8292 55CB 08E6 6FBE 7D37 4836 3586 E46B 3810",
+	"authority maatuska orport=80 v3ident=49015F787433103580E3B66A1707A00E60F2D15B ipv6=[2001:67c:8a4:1::13]:80 91.223.231.13:443 BD6A 8292 55CB 08E6 6FBE 7D37 4836 3586 E46B 3810",
 	"authority longclaw orport=443 v3ident=23D15D965BC35114467363C165C4F724B64B4F66 199.58.81.140:80 74A9 1064 6BCE EFBC D2E8 74FC 1DC9 9743 0F96 8145",
-	"authority bastet orport=443 v3ident=27102BC123E7AF1D4741AE047E160C91ADC76B21 ipv6=[2620:13:4000:6000::1000:118]:443 204.13.164.118:80 24E2 F139 121D 4394 C54B 5BCC 368B 3B41 1857 C413",
+	"authority sekhmet orport=443 v3ident=E30CF7B3DFA63FBDC5FC9E46EC75C543AB6D7403 204.13.164.118:80 2732 6CD9 AF0C 3925 9CFB 383C AFC5 0F5C EB0D 8906",
 	"authority faravahar orport=443 v3ident=70849B868D606BAECFB6128C5E3D782029AA394F 216.218.219.41:80 E3E4 2D35 F801 C9D5 AB23 584E 0025 D56F E2B3 3396"
 
     };
