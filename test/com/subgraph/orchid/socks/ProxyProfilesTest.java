@@ -30,12 +30,14 @@ import org.junit.Test;
 import com.subgraph.orchid.CircuitManager;
 import com.subgraph.orchid.OpenFailedException;
 import com.subgraph.orchid.ProxyStatistics;
+import com.subgraph.orchid.TorException;
 import com.subgraph.orchid.config.TorConfigImpl;
 import com.subgraph.orchid.encoders.Base64;
 
 /**
  * Password profiles (TorConfig#setSocksPasswords), the counts of requests
- * that give only an address (ProxyStatistics) with SafeSocks.
+ * that give only an address (ProxyStatistics) with SafeSocks, and server
+ * sockets that the caller keeps (addListeningSocket).
  */
 public class ProxyProfilesTest {
 	private TorConfigImpl config;
@@ -361,5 +363,83 @@ public class ProxyProfilesTest {
 		assertEquals(1, statsAfter(1).getTotal().getAddressOnlyRequests());
 	}
 
+	/* A caller's server socket: served, left open by stop(), and taken over by the next listener. */
+	@Test(timeout = 20000)
+	public void testCallersSocketOutlivesTheListener() throws Exception {
+		final ServerSocket kept = new ServerSocket(0, 50, InetAddress.getLoopbackAddress());
+		try {
+			kept.setSoTimeout(1234);
+			final SocksPortListenerImpl first = newListener();
+			first.addListeningSocket(kept);
+			assertEquals(Socks5Request.SOCKS5_STATUS_CONNECTION_REFUSED,
+					socks(kept.getLocalPort(), null, null, connectName("example.com")));
 
+			first.stop();
+			assertFalse("stop() closed the caller's socket", kept.isClosed());
+			assertEquals("the timeout is restored", 1234, kept.getSoTimeout());
+
+			// Between the two listeners, a client waits in the backlog.
+			final Socket waiting = connect(kept.getLocalPort());
+			try {
+				waiting.getOutputStream().write(new byte[] { 5, 1, 0 });
+				final SocksPortListenerImpl second = newListener();
+				second.addListeningSocket(kept);
+				assertEquals(0, read(waiting.getInputStream(), 2)[1]);
+				waiting.getOutputStream().write(connectName("example.org"));
+				assertEquals(Socks5Request.SOCKS5_STATUS_CONNECTION_REFUSED, read(waiting.getInputStream(), 2)[1]);
+				assertEquals(1, second.getStatistics().getTotal().getRequests());
+			} finally {
+				waiting.close();
+			}
+		} finally {
+			kept.close();
+		}
+	}
+
+	@Test(timeout = 20000)
+	public void testCallersHttpTunnelSocket() throws Exception {
+		final ServerSocket kept = new ServerSocket(0, 50, InetAddress.getLoopbackAddress());
+		try {
+			listener.addHttpTunnelSocket(kept);
+			final int saved = httpPort;
+			httpPort = kept.getLocalPort();
+			assertEquals(502, http("example.com:443", null, null));
+			httpPort = saved;
+		} finally {
+			kept.close();
+		}
+	}
+
+	@Test
+	public void testCallersSocketMustBeBoundAndNew() throws Exception {
+		final ServerSocket unbound = new ServerSocket();
+		try {
+			listener.addListeningSocket(unbound);
+			fail("accepted an unbound socket");
+		} catch(TorException e) {
+			// expected
+		} finally {
+			unbound.close();
+		}
+		final ServerSocket closed = new ServerSocket(0, 50, InetAddress.getLoopbackAddress());
+		closed.close();
+		try {
+			listener.addListeningSocket(closed);
+			fail("accepted a closed socket");
+		} catch(TorException e) {
+			// expected
+		}
+		final ServerSocket s = new ServerSocket(0, 50, InetAddress.getLoopbackAddress());
+		try {
+			listener.addListeningSocket(s);
+			try {
+				listener.addHttpTunnelSocket(s);
+				fail("accepted the same port twice");
+			} catch(TorException e) {
+				// expected
+			}
+		} finally {
+			s.close();
+		}
+	}
 }

@@ -4,10 +4,15 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketException;
+import java.net.SocketTimeoutException;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -56,6 +61,14 @@ public class SocksPortListenerImpl implements SocksPortListener {
     private final Set<Integer> httpTunnelPorts = new HashSet<Integer>();
     private final Map<Integer, AcceptTask> acceptThreads = new HashMap<Integer, AcceptTask>();
     private final ProxyCounters counters = new ProxyCounters();
+
+    /*
+     * How often the accept loop of a caller's server socket looks whether
+     * it should stop: it cannot be woken by closing the socket, which the
+     * caller keeps.  stop() waits at most STOP_WAIT_MS for it.
+     */
+    static final int ACCEPT_POLL_MS = 200;
+    static final long STOP_WAIT_MS = 2000;
     private final TorConfig config;
     private final CircuitManager circuitManager;
     private final ExecutorService executor;
@@ -82,9 +95,47 @@ public class SocksPortListenerImpl implements SocksPortListener {
         addPort(port, true);
     }
 
+    /**
+     * Accept SOCKS clients on <code>socket</code>, which the caller has
+     * bound and keeps: stop() stops accepting on it, but leaves it open.
+     */
+    @Override
+    public void addListeningSocket(ServerSocket socket) {
+        addSocket(socket, false);
+    }
+
+    /** As {@link #addListeningSocket(ServerSocket)}, for HTTP CONNECT clients. */
+    @Override
+    public void addHttpTunnelSocket(ServerSocket socket) {
+        addSocket(socket, true);
+    }
+
     @Override
     public ProxyStatistics getStatistics() {
         return counters.snapshot();
+    }
+
+    private void addSocket(ServerSocket socket, boolean httpTunnel) {
+        if(socket == null || !socket.isBound() || socket.isClosed()) {
+            throw new TorException("The server socket must be bound and open");
+        }
+        final int port = socket.getLocalPort();
+        synchronized(listeningPorts) {
+            if(isStopped) {
+                throw new IllegalStateException("Cannot add listening socket because Socks proxy has been stopped");
+            }
+            if(listeningPorts.contains(port)) {
+                throw new TorException("Already listening on port "+ port);
+            }
+            listeningPorts.add(port);
+            if(httpTunnel) {
+                httpTunnelPorts.add(port);
+            }
+            final AcceptTask task = new AcceptTask(socket, httpTunnel);
+            acceptThreads.put(port, task);
+            executor.execute(task);
+            logger.debug("Accepting "+ (httpTunnel ? "HTTP tunnel" : "SOCKS") +" connections on the given socket, port "+ port);
+        }
     }
 
     private void addPort(int port, boolean httpTunnel) {
@@ -118,15 +169,26 @@ public class SocksPortListenerImpl implements SocksPortListener {
 
     }
 
+    /*
+     * Stops accepting and closes the server sockets this listener bound.  A
+     * caller's server socket is left open; stop() returns once its accept
+     * loop has ended (or after STOP_WAIT_MS), so that a new listener can
+     * take the socket over without two of them accepting on it.
+     */
     @Override
     public void stop() {
+        final List<AcceptTask> tasks;
         synchronized (listeningPorts) {
-            for(AcceptTask t: acceptThreads.values()) {
+            tasks = new ArrayList<AcceptTask>(acceptThreads.values());
+            for(AcceptTask t: tasks) {
                 t.stop();
             }
             executor.shutdownNow();
             handshakeWatchdog.shutdownNow();
             isStopped = true;
+        }
+        for(AcceptTask t: tasks) {
+            t.awaitEnd(STOP_WAIT_MS);
         }
     }
 
@@ -235,25 +297,44 @@ public class SocksPortListenerImpl implements SocksPortListener {
         return InetAddress.getByName(address.trim());
     }
 
+    private static void warnIfNotLoopback(InetAddress address, int port, boolean httpTunnel) {
+        if(address != null && !address.isLoopbackAddress()) {
+            logger.warn((httpTunnel ? "HTTP tunnel" : "SOCKS") +" listener on port "+ port +" is bound to "+ address.getHostAddress() +
+                    ", not to the loopback address: other hosts that can reach it can use it as a Tor proxy");
+        }
+    }
+
     private class AcceptTask implements Runnable {
         private final ServerSocket socket;
         private final int port;
         private final boolean httpTunnel;
+        /* The caller's socket, which stays open: see addListeningSocket(). */
+        private final boolean external;
+        private final CountDownLatch ended = new CountDownLatch(1);
         private volatile boolean stopped;
 
         AcceptTask(int port, boolean httpTunnel) throws IOException {
             final InetAddress address = getListenAddress();
             this.socket = new ServerSocket(port, 50, address);
             this.httpTunnel = httpTunnel;
-            if(!address.isLoopbackAddress()) {
-                logger.warn((httpTunnel ? "HTTP tunnel" : "SOCKS") +" listener on port "+ port +" is bound to "+ address.getHostAddress() +
-                        ", not to the loopback address: other hosts that can reach it can use it as a Tor proxy");
-            }
+            this.external = false;
+            warnIfNotLoopback(address, port, httpTunnel);
             this.port = port;
+        }
+
+        AcceptTask(ServerSocket socket, boolean httpTunnel) {
+            this.socket = socket;
+            this.httpTunnel = httpTunnel;
+            this.external = true;
+            this.port = socket.getLocalPort();
+            warnIfNotLoopback(socket.getInetAddress(), port, httpTunnel);
         }
 
         void stop() {
             stopped = true;
+            if(external) {
+                return;
+            }
             try {
                 socket.close();
             } catch (IOException e) { 
@@ -261,26 +342,65 @@ public class SocksPortListenerImpl implements SocksPortListener {
             }
         }
 
+        void awaitEnd(long millis) {
+            try {
+                if(!ended.await(millis, TimeUnit.MILLISECONDS)) {
+                    logger.warn("The accept loop of port "+ port +" did not end in "+ millis +" ms");
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+
         @Override
         public void run() {
+            int savedTimeout = 0;
             try {
+                if(external) {
+                    savedTimeout = socket.getSoTimeout();
+                    socket.setSoTimeout(ACCEPT_POLL_MS);
+                }
                 runAcceptLoop();
             } catch (IOException e) {
                 if(!stopped) {
                     logger.warn("System error accepting SOCKS socket connections: "+ e.getMessage());
                 }
             } finally {
+                if(external && !socket.isClosed()) {
+                    try {
+                        socket.setSoTimeout(savedTimeout);
+                    } catch (SocketException e) {
+                        // closed meanwhile
+                    }
+                }
                 synchronized (listeningPorts) {
                     listeningPorts.remove(port);
                     httpTunnelPorts.remove(port);
                     acceptThreads.remove(port);
                 }
+                ended.countDown();
             }
         }
 
         private void runAcceptLoop() throws IOException {
-            while(!Thread.interrupted() && !stopped) {
-                acceptClient(socket.accept(), httpTunnel);
+            /*
+             * A socket this listener bound is closed by stop(), which ends
+             * accept() with an exception.  The caller's socket stays open:
+             * its accept() returns every ACCEPT_POLL_MS to look at the flag.
+             */
+            while(!stopped && !Thread.currentThread().isInterrupted()) {
+                final Socket s;
+                try {
+                    s = socket.accept();
+                } catch (SocketTimeoutException e) {
+                    continue;
+                }
+                if(stopped) {
+                    // Accepted while stopping: the next listener did not get it in time.
+                    closeQuietly(s);
+                    return;
+                }
+                acceptClient(s, httpTunnel);
             }
         }
     }

@@ -266,6 +266,12 @@ is a small app that does all of the following.  An app that embeds it should:
   can connect to `127.0.0.1`.  Set a random password with
   `TorConfig#setSocksPassword()` and give it only to the app's own HTTP client
   (or one per client app, with `TorConfig#setSocksPasswords()`).
+* **Keep the port while restarting the client**: if the app restarts the
+  `TorClient` (to apply new settings, say), bind the port itself and pass the
+  `ServerSocket` to `TorClient#enableSocksListener(ServerSocket)` (since
+  2.9.0).  Orchid's own port is closed by `stop()`, and until the next client
+  binds it again any other app can bind it and receive the connections meant
+  for Tor.
 * **Test on a device or an emulator**: the sample's instrumented test
   (`gradlew connectedDebugAndroidTest` in `samples/android`) checks that a
   request through Orchid reaches check.torproject.org from Tor.

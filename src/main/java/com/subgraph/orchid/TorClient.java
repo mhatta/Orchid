@@ -1,5 +1,6 @@
 package com.subgraph.orchid;
 
+import java.net.ServerSocket;
 import java.security.NoSuchAlgorithmException;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -347,6 +348,49 @@ public class TorClient {
 
     public void enableSocksListener() {
         enableSocksListener(9150);
+    }
+
+    /**
+     * Accept SOCKS clients on a server socket that the caller has bound
+     * and keeps, instead of a port that Orchid binds.  {@link #stop()}
+     * stops accepting on it (it returns once this client no longer accepts
+     * there, or after two seconds) but does not close it: the caller can
+     * hand it to the next TorClient, and closes it when done.
+     *
+     * <p>This is for applications that restart the client, for instance to
+     * apply new settings.  A port that Orchid binds is closed by stop() and
+     * bound again by the next client, and in between any other program can
+     * bind it (on Android, any app); the applications set to use the port
+     * would then send their connections, host names and credentials to
+     * that program, not to Tor.  Connections that arrive while no client
+     * accepts wait in the socket's backlog.
+     *
+     * <p>Bind the socket to the loopback address, as Orchid does
+     * ({@link TorConfig#getSocksListenAddress()} is not used here):
+     * <pre>
+     * ServerSocket s = new ServerSocket(9150, 50, InetAddress.getLoopbackAddress());
+     * </pre>
+     * While the client accepts on it, the socket's timeout
+     * ({@link ServerSocket#setSoTimeout(int)}) is set to a fraction of a
+     * second, so that the client can stop without closing it; the old
+     * timeout is restored afterwards.
+     *
+     * @throws TorException if the socket is not bound, is closed, or its
+     *         port is already in use by this client
+     * @since 2.9.0
+     */
+    public void enableSocksListener(ServerSocket socket) {
+        socksListener.addListeningSocket(socket);
+    }
+
+    /**
+     * As {@link #enableSocksListener(ServerSocket)}, for HTTP CONNECT
+     * clients: see {@link #enableHttpTunnelListener(int)}.
+     *
+     * @since 2.9.0
+     */
+    public void enableHttpTunnelListener(ServerSocket socket) {
+        socksListener.addHttpTunnelSocket(socket);
     }
 
     /**
