@@ -39,6 +39,14 @@ import androidx.test.platform.app.InstrumentationRegistry;
 @RunWith(AndroidJUnit4.class)
 public class TorConnectionTest {
     private static final long BOOTSTRAP_MINUTES = 5;
+    /*
+     * Tries of the request, each over new circuits (another isolation
+     * key), so usually through another exit relay.  An exit that ends the
+     * stream at once (the TLS handshake "did not complete") fails one try,
+     * not the test: the request has only one route, so OkHttp itself does
+     * not try again.  A failure on every try still fails the test.
+     */
+    private static final int FETCH_TRIES = 3;
 
     @Test
     public void requestGoesThroughTor() throws Exception {
@@ -65,21 +73,47 @@ public class TorConnectionTest {
                 done.await(BOOTSTRAP_MINUTES, TimeUnit.MINUTES));
         assertNull("Orchid failed to start", failure.get());
 
-        final String answer;
-        try {
-            answer = TorCheck.fetch(orchid.client());
-        } catch (java.io.IOException e) {
-            // The test report keeps only the first line; logcat.txt (the CI
-            // artifact) gets the causes, e.g. "Trust anchor for certification
-            // path not found".
-            Log.e(TorCheck.TAG, "request through Tor failed", e);
-            throw e;
-        }
+        final String answer = fetchWithTries(orchid.client());
         Log.i(TorCheck.TAG, "check.torproject.org: " + answer);
         assertTrue("not through Tor: " + answer, TorCheck.isTor(answer));
 
         refusesCertificateForAnotherName(orchid.client());
         platformTlsOverTor(orchid.client());
+    }
+
+    private static String fetchWithTries(TorClient tor) throws IOException {
+        IOException last = null;
+        for (int i = 1; i <= FETCH_TRIES; i++) {
+            try {
+                return TorCheck.fetch(tor, "orchid-sample-test-" + i);
+            } catch (IOException e) {
+                // The test report keeps only the first line; logcat.txt (the
+                // CI artifact) gets the causes, e.g. "Trust anchor for
+                // certification path not found", and Orchid's log says why
+                // the exit relay ended the stream.
+                Log.e(TorCheck.TAG, "request through Tor failed (try " + i + " of " + FETCH_TRIES + ")", e);
+                if (!isRouteProblem(e)) {
+                    throw e;
+                }
+                last = e;
+            }
+        }
+        throw last;
+    }
+
+    /*
+     * Failures that another circuit can cure: the stream ended or timed
+     * out, or could not be opened.  Not a certificate or host name problem,
+     * which another exit would not change.
+     */
+    private static boolean isRouteProblem(IOException e) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            if (t instanceof java.security.cert.CertificateException
+                    || t instanceof javax.net.ssl.SSLPeerUnverifiedException) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /*

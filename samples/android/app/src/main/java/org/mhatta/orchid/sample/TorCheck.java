@@ -52,6 +52,11 @@ final class TorCheck {
      * platform's SOCKS client speaks SOCKS 4 only, without host names.
      */
     static OkHttpClient httpClient(TorClient tor) throws IOException {
+        return httpClient(tor, "orchid-sample");
+    }
+
+    /* As httpClient(tor), with streams isolated by isolationKey: another key, other circuits. */
+    static OkHttpClient httpClient(TorClient tor, String isolationKey) throws IOException {
         final X509TrustManager trustManager = platformTrustManager();
         final SSLContext tls;
         try {
@@ -61,7 +66,7 @@ final class TorCheck {
             throw new IOException("cannot set up TLS", e);
         }
         return new OkHttpClient.Builder()
-                .socketFactory(tor.getSocketFactory("orchid-sample"))
+                .socketFactory(tor.getSocketFactory(isolationKey))
                 .sslSocketFactory(new AndroidSSLSocketFactory(tls), trustManager)
                 .dns(new Dns() {
                     public List<InetAddress> lookup(String hostname) {
@@ -90,8 +95,13 @@ final class TorCheck {
 
     /** "200 {...}": the status and the body of the answer. */
     static String fetch(TorClient tor) throws IOException {
+        return fetch(tor, "orchid-sample");
+    }
+
+    /** As {@link #fetch(TorClient)}, over circuits of their own for isolationKey. */
+    static String fetch(TorClient tor, String isolationKey) throws IOException {
         final Request request = new Request.Builder().url(URL).build();
-        try (Response response = httpClient(tor).newCall(request).execute()) {
+        try (Response response = httpClient(tor, isolationKey).newCall(request).execute()) {
             return response.code() + " " + response.body().string();
         }
     }
